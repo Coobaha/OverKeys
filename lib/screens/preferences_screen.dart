@@ -32,6 +32,7 @@ class PreferencesScreen extends StatefulWidget {
 
 class _PreferencesScreenState extends State<PreferencesScreen> with WindowListener {
   final PreferencesService _prefsService = PreferencesService();
+  late final FocusNode _keyboardFocusNode;
 
   // UI state
   Brightness _brightness = Brightness.dark;
@@ -144,6 +145,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
   @override
   void initState() {
     super.initState();
+    _keyboardFocusNode = FocusNode();
     windowManager.addListener(this);
     _loadPreferences();
     _setupMethodHandler();
@@ -175,6 +177,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
 
   @override
   void dispose() {
+    _keyboardFocusNode.dispose();
     _savePreferences();
     windowManager.removeListener(this);
     super.dispose();
@@ -204,9 +207,12 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
   }
 
   Future<void> _loadPreferences() async {
-    final prefs = await _prefsService.loadAllPreferences();
+    // AIDEV-NOTE: Add error handling to prevent crashes during tab initialization
+    try {
+      final prefs = await _prefsService.loadAllPreferences();
 
-    setState(() {
+      if (mounted) {
+        setState(() {
       // General settings
       _launchAtStartup = prefs['launchAtStartup'];
       _autoHideEnabled = prefs['autoHideEnabled'];
@@ -291,7 +297,12 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
       _use6ColLayout = prefs['use6ColLayout'];
       _kanataEnabled = prefs['kanataEnabled'];
       _keyboardFollowsMouse = prefs['keyboardFollowsMouse'] ?? false;
-    });
+        });
+      }
+    } catch (e) {
+      print('Error loading preferences: $e');
+      // Continue with default values if loading fails
+    }
   }
 
   Future<void> _savePreferences() async {
@@ -386,27 +397,49 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
   }
 
   void _updateMainWindow(dynamic method, dynamic value) async {
-    if (value is Color) {
-      value = value.toARGB32();
-    } else if (value is FontWeight) {
-      value = value.index;
-    } else if (value is HotKey) {
-      value = jsonEncode(value.toJson());
+    // AIDEV-NOTE: Add error handling to prevent tab navigation crashes
+    try {
+      if (value is Color) {
+        value = value.toARGB32();
+      } else if (value is FontWeight) {
+        value = value.index;
+      } else if (value is HotKey) {
+        value = jsonEncode(value.toJson());
+      }
+      await DesktopMultiWindow.invokeMethod(0, method, value);
+      await _savePreferences();
+    } catch (e) {
+      print('Error updating main window: $e');
+      // Continue with local save even if main window update fails
+      await _savePreferences();
     }
-    await DesktopMultiWindow.invokeMethod(0, method, value);
-    _savePreferences();
   }
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = ThemeManager.getTheme(_brightness);
-    final FocusNode keyboardFocusNode = FocusNode();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      keyboardFocusNode.requestFocus();
+      if (_keyboardFocusNode.canRequestFocus) {
+        _keyboardFocusNode.requestFocus();
+      }
     });
 
-    return MaterialApp(
+    // AIDEV-NOTE: ESC key handling for macOS UX - close preferences on escape
+    return KeyboardListener(
+      focusNode: _keyboardFocusNode,
+      onKeyEvent: (KeyEvent event) {
+        if (event is KeyDownEvent && 
+            event.logicalKey == LogicalKeyboardKey.escape &&
+            !HardwareKeyboard.instance.isControlPressed &&
+            !HardwareKeyboard.instance.isAltPressed &&
+            !HardwareKeyboard.instance.isMetaPressed &&
+            !HardwareKeyboard.instance.isShiftPressed) {
+          // Close preferences window on ESC key (only if no modifiers are pressed)
+          windowManager.close();
+        }
+      },
+      child: MaterialApp(
       theme: theme,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -417,14 +450,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
         Locale('en', ''),
       ],
       home: Builder(builder: (context) {
-        return KeyboardListener(
-          focusNode: keyboardFocusNode,
-          onKeyEvent: (KeyEvent keyEvent) {
-            if (keyEvent is KeyDownEvent && keyEvent.logicalKey == LogicalKeyboardKey.escape) {
-              DesktopMultiWindow.invokeMethod(0, 'closePreferencesWindow');
-            }
-          },
-          child: Scaffold(
+        return Scaffold(
             body: Row(
               children: [
                 _buildNavigationPanel(context),
@@ -443,11 +469,11 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
                 ),
               ],
             ),
-          ),
         );
       }),
       debugShowCheckedModeBanner: false,
-    );
+      ), // Close MaterialApp
+    ); // Close KeyboardListener
   }
 
   Widget _buildNavigationPanel(BuildContext context) {

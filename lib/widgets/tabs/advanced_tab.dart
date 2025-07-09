@@ -161,14 +161,29 @@ class AdvancedTab extends StatelessWidget {
                 final configPath = await configService.configPath;
                 final file = File(configPath);
 
-                if (await file.exists()) {
-                  Process.start('cmd.exe', ['/c', 'start', '', configPath]);
-                } else {
+                if (!await file.exists()) {
                   await configService.saveConfig(UserConfig());
-                  Process.start('cmd.exe', ['/c', 'start', '', configPath]);
+                }
+
+                // AIDEV-NOTE: Platform-specific file opening
+                if (Platform.isWindows) {
+                  await Process.start('cmd.exe', ['/c', 'start', '', configPath]);
+                } else if (Platform.isMacOS) {
+                  await Process.start('open', [configPath]);
+                } else if (Platform.isLinux) {
+                  await Process.start('xdg-open', [configPath]);
                 }
               } catch (e) {
                 debugPrint('Error opening config file: $e');
+                // Show user-friendly error
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Could not open config file: $e'),
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                  );
+                }
               }
             },
           ),
