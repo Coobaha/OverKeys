@@ -14,11 +14,12 @@ import 'package:window_manager/window_manager.dart';
 import 'package:overkeys/services/config_service.dart';
 import 'package:overkeys/services/kanata_service.dart';
 import 'package:overkeys/services/preferences_service.dart';
-import 'package:overkeys/utils/key_code.dart';
+import 'package:overkeys/services/platform/keyboard_service.dart';
+import 'package:overkeys/utils/key_code_unified.dart';
 import 'package:overkeys/widgets/status_overlay.dart';
 import 'models/keyboard_layouts.dart';
 import 'screens/keyboard_screen.dart';
-import 'utils/hooks.dart';
+import 'utils/hooks_unified.dart';
 
 class MainApp extends StatefulWidget {
   const MainApp({super.key});
@@ -169,6 +170,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   // Misc
   final Map<String, bool> _keyPressStates = {};
+  final Map<String, String> _physicalKeyToVisualKey = {}; // Track physical->visual mapping
   Map<String, String>? _customShiftMappings;
   final Set<String> _activeTriggers = {};
   List<KeyboardLayout> _userLayers = [];
@@ -196,6 +198,11 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     if (_autoHideEnabled) {
       _resetAutoHideTimer();
     }
+    // Ensure keyboard is visible after initialization
+    setState(() {
+      _isWindowVisible = true;
+      _opacity = _lastOpacity > 0 ? _lastOpacity : 0.6;
+    });
   }
 
   @override
@@ -207,6 +214,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     _overlayTimer?.cancel();
     _mouseCheckTimer?.cancel();
     _kanataService.dispose();
+    _keyboardService?.dispose();
+    // No process to kill anymore
     _saveAllPreferences();
     super.dispose();
   }
@@ -520,15 +529,21 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   }
 
   Future<void> _initStartup() async {
-    _launchAtStartup = await launchAtStartup.isEnabled();
+    if (Platform.isWindows) {
+      _launchAtStartup = await launchAtStartup.isEnabled();
+    } else {
+      _launchAtStartup = false; // Not supported on macOS yet
+    }
     setState(() {});
   }
 
   Future<void> _handleStartupToggle(bool enable) async {
-    if (enable) {
-      await launchAtStartup.enable();
-    } else {
-      await launchAtStartup.disable();
+    if (Platform.isWindows) {
+      if (enable) {
+        await launchAtStartup.enable();
+      } else {
+        await launchAtStartup.disable();
+      }
     }
     await _initStartup();
   }
@@ -553,49 +568,109 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   }
 
   void _fadeIn() {
-    if (_forceHide || _isWindowVisible) return;
-    setState(() {
-      _isWindowVisible = true;
-      _opacity = _lastOpacity;
-    });
+    if (_forceHide) return;
+    if (!_isWindowVisible) {
+      setState(() {
+        _isWindowVisible = true;
+        _opacity = _lastOpacity;
+      });
+    }
     _resetAutoHideTimer();
   }
 
-  void _setupKeyListener() {
-    final receivePort = ReceivePort();
-    Isolate.spawn(setHook, receivePort.sendPort).then((_) {}).catchError((error) {
-      if (kDebugMode) {
-        print('Error spawning Isolate: $error');
-      }
-    });
+  KeyboardService? _keyboardService;
 
-    receivePort.listen(_handleKeyEvent);
+  void _setupKeyListener() {
+    if (Platform.isMacOS) {
+      _setupMacOSKeyboardMonitoring();
+    } else {
+      // Fallback to isolate approach for other platforms
+      final receivePort = ReceivePort();
+      Isolate.spawn(setHook, receivePort.sendPort).then((_) {}).catchError((error) {
+        if (kDebugMode) {
+          print('Error spawning Isolate: $error');
+        }
+      });
+      receivePort.listen(_handleKeyEvent);
+    }
+  }
+
+  void _setupMacOSKeyboardMonitoring() async {
+    _keyboardService = KeyboardService.create();
+    
+    // Check permissions first
+    final hasPermissions = await _keyboardService!.checkPermissions();
+    if (!hasPermissions) {
+      print("ERROR: macOS keyboard monitoring requires both Accessibility and Input Monitoring permissions.");
+      print("Please enable them in System Preferences > Security & Privacy > Privacy");
+      print("1. Go to System Preferences > Security & Privacy > Privacy > Accessibility");
+      print("2. Add your IDE (IntelliJ/VS Code/Terminal) and enable it");
+      print("3. Also add to Input Monitoring if on macOS 10.15+");
+      print("4. Restart the app after granting permissions");
+      return; // Don't crash, just return
+    }
+    
+    // Start monitoring using the platform channel
+    await _keyboardService!.startMonitoring((List<dynamic> message) {
+      _handleKeyEvent(message);
+    });
   }
 
   void _handleKeyEvent(dynamic message) {
     if (message is! List) return;
 
+    String key;
+    bool isPressed;
+    bool isShiftDown;
+
     if (message[0] is String) {
+      // Handle string-based key events (macOS format)
       if (message[0] == 'session_unlock') {
         setState(() => _keyPressStates.clear());
+        return;
       }
-      return;
+      
+      final keyName = message[0] as String;
+      isPressed = message[1] as bool;
+      isShiftDown = message[2] as bool;
+      
+      // Map string key names to layout keys
+      key = getKeyFromStringKeyShift(keyName, isShiftDown);
+    } else if (message[0] is int) {
+      // Handle integer-based key events (Windows format)
+      final keyCode = message[0] as int;
+      isPressed = message[1] as bool;
+      isShiftDown = message[2] as bool;
+      key = getKeyFromKeyCodeShift(keyCode, isShiftDown);
+    } else {
+      return; // Invalid message format
     }
 
-    if (message[0] is! int) return;
-
-    final keyCode = message[0] as int;
-    final isPressed = message[1] as bool;
-    final isShiftDown = message[2] as bool;
-    final key = getKeyFromKeyCodeShift(keyCode, isShiftDown);
-
-    if (kDebugMode) {
-      print(
-          'Key: ${key.padRight(10)}\tKeyCode: ${keyCode.toString().padRight(5)}\tPressed: ${isPressed.toString().padRight(5)}\tShift: $isShiftDown');
-    }
+    // Key event processed: $key pressed: $isPressed shift: $isShiftDown
+    
     setState(() {
-      _keyPressStates[key] = isPressed;
+      // For macOS string events, track physical key to visual key mapping
+      if (message[0] is String) {
+        final keyName = message[0] as String;
+        
+        if (isPressed) {
+          // On press: track which visual key this physical key maps to
+          _physicalKeyToVisualKey[keyName] = key;
+          _keyPressStates[key] = true;
+        } else {
+          // On release: clear the visual key that was set during press
+          final pressedVisualKey = _physicalKeyToVisualKey[keyName];
+          if (pressedVisualKey != null) {
+            _keyPressStates[pressedVisualKey] = false;
+            _physicalKeyToVisualKey.remove(keyName);
+          }
+        }
+      } else {
+        // For Windows integer events, just track the mapped key
+        _keyPressStates[key] = isPressed;
+      }
     });
+    
     if (_forceHide) return;
     if (_autoHideEnabled && !_isWindowVisible && isPressed) {
       _fadeIn();
@@ -823,9 +898,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       await hotKeyManager.register(
         _autoHideHotKey,
         keyDownHandler: (hotKey) {
-          if (kDebugMode) {
-            print('Auto-hide hotkey triggered.');
-          }
           _toggleAutoHide(!_autoHideEnabled);
         },
       );
@@ -835,9 +907,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       await hotKeyManager.register(
         _visibilityHotKey,
         keyDownHandler: (hotKey) {
-          if (kDebugMode) {
-            print('Visibility hotkey triggered.');
-          }
           setState(() {
             onTrayIconMouseDown();
           });
@@ -849,9 +918,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       await hotKeyManager.register(
         _toggleMoveHotKey,
         keyDownHandler: (hotKey) {
-          if (kDebugMode) {
-            print('Move hotkey triggered.');
-          }
           setState(() {
             _ignoreMouseEvents = !_ignoreMouseEvents;
             windowManager.setIgnoreMouseEvents(_ignoreMouseEvents);
@@ -870,9 +936,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       await hotKeyManager.register(
         _preferencesHotKey,
         keyDownHandler: (hotKey) {
-          if (kDebugMode) {
-            print('Preferences hotkey triggered. Opening/Focusing Preferences Window.');
-          }
           _showOverlay('Opening Preferences', const Icon(LucideIcons.appWindow));
           _showPreferences();
         },
@@ -883,9 +946,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       await hotKeyManager.register(
         _increaseOpacityHotKey,
         keyDownHandler: (hotKey) {
-          if (kDebugMode) {
-            print('Increase opacity hotkey triggered.');
-          }
           _adjustOpacity(true);
         },
       );
@@ -895,9 +955,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       await hotKeyManager.register(
         _decreaseOpacityHotKey,
         keyDownHandler: (hotKey) {
-          if (kDebugMode) {
-            print('Decrease opacity hotkey triggered.');
-          }
           _adjustOpacity(false);
         },
       );
@@ -908,6 +965,11 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
+    if (menuItem.key == 'preferences') {
+      _showPreferences();
+      return;
+    }
+    
     if (menuItem.key == 'exit') {
       DesktopMultiWindow.getAllSubWindowIds().then((windowIds) async {
         for (final id in windowIds) {
@@ -953,36 +1015,48 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     windowManager.blur();
   }
 
+  bool _preferencesLaunching = false;
+  Process? _preferencesProcess;
+  
   Future<void> _showPreferences() async {
     try {
-      List<int> windowIds = await DesktopMultiWindow.getAllSubWindowIds();
-      for (int id in windowIds) {
-        Map<String, dynamic>? windowData;
-        try {
-          String? dataString = await DesktopMultiWindow.invokeMethod(id, 'getWindowType');
-          if (dataString != null) {
-            windowData = jsonDecode(dataString);
-            if (windowData != null && windowData['type'] == 'preferences') {
-              await WindowController.fromWindowId(id).show();
-              await DesktopMultiWindow.invokeMethod(id, 'requestFocus');
-              return;
-            }
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('Error getting window data: $e');
-          }
-        }
+      // Check if preferences process is already running  
+      if (_preferencesProcess != null) {
+        // Process exists, don't create another window
+        return;
       }
-
-      await DesktopMultiWindow.createWindow(jsonEncode({
-        'type': 'preferences',
-        'name': 'preferences',
-      }));
+      
+      // Check if we're already launching
+      if (_preferencesLaunching) {
+        return;
+      }
+      
+      _preferencesLaunching = true;
+      
+      // Launch preferences as a separate process (original working approach)
+      final process = await Process.start(
+        Platform.resolvedExecutable,
+        ['preferences'],
+        runInShell: false,
+        environment: Platform.environment,
+      );
+      
+      // Track this process
+      _preferencesProcess = process;
+      
+      // Clean up when process exits
+      process.exitCode.then((exitCode) {
+        _preferencesProcess = null;
+        _preferencesLaunching = false;
+      });
+      
+      _preferencesLaunching = false;
+      
     } catch (e) {
       if (kDebugMode) {
-        print('Error handling preferences window: $e');
+        print('Error launching preferences: $e');
       }
+      _preferencesLaunching = false;
     }
   }
 
@@ -1363,9 +1437,21 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'OverKeys',
-      theme: ThemeData(
+      theme: Platform.isMacOS ? ThemeData(
           fontFamily: _fontFamily,
-          fontFamilyFallback: const ['GeistMono', 'Manrope', 'sans-serif']),
+          fontFamilyFallback: const ['GeistMono', 'Manrope', 'sans-serif'],
+          // AIDEV-NOTE: Enhanced transparency configuration for macOS
+          brightness: Brightness.light,
+          visualDensity: VisualDensity.adaptivePlatformDensity,
+          platform: TargetPlatform.macOS,
+          scaffoldBackgroundColor: Colors.transparent,
+          canvasColor: Colors.transparent,
+          cardColor: Colors.transparent,
+          dialogTheme: const DialogThemeData(backgroundColor: Colors.transparent)) : ThemeData(
+          fontFamily: _fontFamily,
+          fontFamilyFallback: const ['GeistMono', 'Manrope', 'sans-serif'],
+          visualDensity: VisualDensity.adaptivePlatformDensity,
+          platform: TargetPlatform.windows),
       home: Scaffold(
         backgroundColor: Colors.transparent,
         body: Stack(
