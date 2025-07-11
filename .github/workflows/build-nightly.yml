@@ -1,0 +1,75 @@
+name: Nightly Builds
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6 AM UTC
+  workflow_dispatch:
+
+jobs:
+  build-artifacts:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact: exe
+          - os: macos-15
+            platform: macos
+            artifact: dmg
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          
+      - name: Enable desktop (macOS)
+        if: matrix.platform == 'macos'
+        run: flutter config --enable-macos-desktop
+        
+      - name: Enable desktop (Windows)
+        if: matrix.platform == 'windows'
+        run: flutter config --enable-windows-desktop
+        
+      - name: Install dependencies
+        run: flutter pub get
+        
+      - name: Build app
+        run: flutter build ${{ matrix.platform }} --release
+        
+      - name: Create Windows artifact
+        if: matrix.platform == 'windows'
+        run: |
+          $timestamp = Get-Date -Format "yyyy-MM-dd-HHmm"
+          7z a "OverKeys-nightly-$timestamp-Windows.zip" "./build/windows/x64/runner/Release/*"
+        shell: pwsh
+        
+      - name: Create macOS artifact
+        if: matrix.platform == 'macos'
+        run: |
+          brew install create-dmg
+          timestamp=$(date +"%Y-%m-%d-%H%M")
+          create-dmg \
+            --volname "OverKeys Nightly" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --app-drop-link 600 185 \
+            "OverKeys-nightly-$timestamp-macOS.dmg" \
+            "build/macos/Build/Products/Release/"
+            
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OverKeys-nightly-${{ matrix.platform }}
+          path: |
+            OverKeys-nightly-*-${{ matrix.platform == 'windows' && 'Windows.zip' || 'macOS.dmg' }}
+          retention-days: 30
