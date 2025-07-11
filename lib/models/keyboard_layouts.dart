@@ -1,16 +1,45 @@
+class ThumbCluster {
+  final List<List<String?>> leftKeys;  // Array of thumb key rows for left side (supports null)
+  final List<List<String?>> rightKeys; // Array of thumb key rows for right side (supports null)
+  
+  const ThumbCluster({
+    required this.leftKeys,
+    required this.rightKeys,
+  });
+}
+
+class SplitHand {
+  final List<List<String?>> rows;
+  
+  const SplitHand({
+    required this.rows,
+  });
+}
+
 class KeyboardLayout {
   final String name;
-  final List<List<String>> keys;
+  final List<List<String?>> keys;
   final String? trigger;
   final String? type;
   final bool? foreign;
+  final String? layoutStyle; // 'standard', 'matrix', 'split_matrix', 'split_matrix_thumb', 'split_matrix_explicit'
+  final ThumbCluster? thumbCluster; // Optional thumb cluster for complex layouts
+  final SplitHand? leftHand; // Explicit left hand layout
+  final SplitHand? rightHand; // Explicit right hand layout
+  final Map<String, dynamic>? metadata; // Additional layout metadata
 
-  const KeyboardLayout(
-      {required this.name,
-      required this.keys,
-      this.trigger,
-      this.type,
-      this.foreign});
+  const KeyboardLayout({
+    required this.name,
+    required this.keys,
+    this.trigger,
+    this.type,
+    this.foreign,
+    this.layoutStyle,
+    this.thumbCluster,
+    this.leftHand,
+    this.rightHand,
+    this.metadata,
+  });
 }
 
 const qwerty = KeyboardLayout(
@@ -22,6 +51,13 @@ const qwerty = KeyboardLayout(
     ['Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.', '/'],
     [' '],
   ],
+  metadata: {
+    'homeRow': {
+      'rowIndex': 2,
+      'leftPosition': 3, // F key
+      'rightPosition': 6, // J key
+    }
+  },
 );
 
 const colemak = KeyboardLayout(
@@ -33,6 +69,13 @@ const colemak = KeyboardLayout(
     ['Z', 'X', 'C', 'V', 'B', 'K', 'M', ',', '.', '/'],
     [' '],
   ],
+  metadata: {
+    'homeRow': {
+      'rowIndex': 2,
+      'leftPosition': 3, // T key
+      'rightPosition': 5, // H key  
+    }
+  },
 );
 
 const dvorak = KeyboardLayout(

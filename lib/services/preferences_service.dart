@@ -139,6 +139,17 @@ class PreferencesService {
   Future<bool> getKeyboardFollowsMouse() async =>
       await _prefs.getBool('keyboardFollowsMouse') ?? false;
 
+  // Window position settings
+  // AIDEV-NOTE: Window position persistence - stores last window position for restore on startup
+  Future<Offset?> getWindowPosition() async {
+    final x = await _prefs.getDouble('windowPositionX');
+    final y = await _prefs.getDouble('windowPositionY');
+    if (x != null && y != null) {
+      return Offset(x, y);
+    }
+    return null; // Return null to indicate no saved position (use default bottomCenter)
+  }
+
   // General settings
   Future<void> setLaunchAtStartup(bool value) async =>
       await _prefs.setBool('launchAtStartup', value);
@@ -272,6 +283,12 @@ class PreferencesService {
   Future<void> setKeyboardFollowsMouse(bool value) async =>
       await _prefs.setBool('keyboardFollowsMouse', value);
 
+  // Window position settings
+  Future<void> setWindowPosition(Offset position) async {
+    await _prefs.setDouble('windowPositionX', position.dx);
+    await _prefs.setDouble('windowPositionY', position.dy);
+  }
+
   Future<Map<String, dynamic>> loadAllPreferences() async {
     return {
       ...await _loadGeneralPreferences(),
@@ -292,6 +309,7 @@ class PreferencesService {
         'autoHideDuration': await getAutoHideDuration(),
         'opacity': await getOpacity(),
         'keyboardLayoutName': await getKeyboardLayoutName(),
+        'windowPosition': await getWindowPosition(),
       };
 
   Future<Map<String, dynamic>> _loadKeyboardPreferences() async => {
@@ -387,6 +405,11 @@ class PreferencesService {
     await setAutoHideDuration(prefs['autoHideDuration']);
     await setOpacity(prefs['opacity']);
     await setKeyboardLayoutName(prefs['keyboardLayoutName']);
+    
+    // Window position (if provided)
+    if (prefs['windowPosition'] != null) {
+      await setWindowPosition(prefs['windowPosition']);
+    }
 
     // Keyboard settings
     await setKeymapStyle(prefs['keymapStyle']);

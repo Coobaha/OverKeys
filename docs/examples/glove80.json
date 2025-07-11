@@ -1,0 +1,44 @@
+{
+  "userLayouts": [
+    {
+      "name": "Symbol Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          [],
+          ["`", "]", "(", ")", ",", "."],
+          ["[", "!", "{", "}", ";", "?"],
+          ["#", "^", "=", "_", "$", "*"],
+          ["~", "<", "|", "-", ">", "/"],
+          ["..", "&", "'", "\"", "+", null]
+        ],
+        "thumbRows": [
+          ["\\", ".", "*"],
+          ["%", ":", "@"]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          [],
+          [],
+          ["`", "SHIFT", "CMD", "ALT", "CTRL"],
+          ["\"", "BSPC", "TAB", "⎵", "RET"],
+          ["'", "DEL", "STAB", "INS", "ESC"],
+          []
+        ],
+        "thumbRows": [
+          [],
+          [null, null, "SYM"]
+        ]
+      },
+      "trigger": "F20",
+      "type": "held"
+    }
+  ],
+  "defaultUserLayout": "Symbol Layer",
+  "homeRow": {
+    "rowIndex": 4,
+    "leftPosition": 2,
+    "rightPosition": 2
+  }
+}

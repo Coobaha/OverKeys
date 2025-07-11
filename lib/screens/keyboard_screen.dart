@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/keyboard_layouts.dart';
 import '../models/mappings.dart';
+import '../models/user_config.dart';
 
 class KeyboardScreen extends StatelessWidget {
   final KeyboardLayout layout;
@@ -50,6 +51,7 @@ class KeyboardScreen extends StatelessWidget {
   final bool use6ColLayout;
   final Map<String, bool> keyPressStates;
   final Map<String, String>? customShiftMappings;
+  final UserConfig? config;
 
   const KeyboardScreen({
     super.key,
@@ -100,25 +102,292 @@ class KeyboardScreen extends StatelessWidget {
     required this.use6ColLayout,
     required this.keyPressStates,
     this.customShiftMappings,
+    this.config,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: layout.keys.asMap().entries.where((entry) {
-          return showTopRow || entry.key > 0;
-        }).map((entry) {
-          int rowIndex = entry.key;
-          List<String> row = entry.value;
-          return buildRow(rowIndex, row);
-        }).toList(),
+    // DEBUG MODE: Text rendering for layout analysis
+    if (layout.name.contains("DEBUG")) {
+      return buildDebugTextLayout();
+    }
+
+    // Check if this is a complex layout with thumb cluster
+    bool hasThumbCluster = layout.thumbCluster != null;
+
+    if (hasThumbCluster) {
+      return buildSplitMatrixWithThumbLayout();
+    } else {
+      return buildStandardLayout();
+    }
+  }
+
+  Widget buildStandardLayout() {
+    return SingleChildScrollView(
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: layout.keys.asMap().entries.where((entry) {
+            return showTopRow || entry.key > 0;
+          }).map((entry) {
+            int rowIndex = entry.key;
+            List<String?> row = entry.value;
+            return buildRow(rowIndex, row);
+          }).toList(),
+        ),
       ),
     );
   }
 
-  Widget buildRow(int rowIndex, List<String> keys) {
+  Widget buildDebugTextLayout() {
+    StringBuffer debug = StringBuffer();
+    debug.writeln("🔍 DEBUG: Glove80 Layout Analysis");
+    debug.writeln("Layout: ${layout.name}");
+    debug.writeln("Keys matrix: ${layout.keys.length} rows");
+
+    for (int i = 0; i < layout.keys.length; i++) {
+      List<String?> row = layout.keys[i];
+      int leftCount = _getLeftSideCount(i);
+      int rightStart = _getRightSideStart(i, row.length);
+
+      debug.writeln(
+          "Row $i: ${row.length} keys, left=$leftCount, right_start=$rightStart");
+      debug.write("  LEFT:  [");
+      for (int j = 0; j < leftCount && j < row.length; j++) {
+        debug.write(
+            "${row[j]?.isEmpty != false ? '_' : row[j]}${j < leftCount - 1 ? ',' : ''}");
+      }
+      debug.write("] | RIGHT: [");
+      for (int j = rightStart; j < row.length; j++) {
+        debug.write(
+            "${row[j]?.isEmpty != false ? '_' : row[j]}${j < row.length - 1 ? ',' : ''}");
+      }
+      debug.writeln("]");
+    }
+
+    if (layout.thumbCluster != null) {
+      debug.writeln("Thumb Cluster:");
+      debug.writeln("  Left: ${layout.thumbCluster!.leftKeys}");
+      debug.writeln("  Right: ${layout.thumbCluster!.rightKeys}");
+    }
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: SelectableText(
+          debug.toString(),
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildSplitMatrixWithThumbLayout() {
+    List<Widget> mainRows = [];
+
+    // Build main matrix rows
+    for (int i = 0; i < layout.keys.length; i++) {
+      if (!showTopRow && i == 0) continue;
+      mainRows.add(buildSplitMatrixRow(i, layout.keys[i]));
+    }
+
+    // Build thumb cluster if present
+    Widget? thumbClusterWidget;
+    if (layout.thumbCluster != null) {
+      thumbClusterWidget = buildThumbCluster(layout.thumbCluster!);
+    }
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(keyPadding),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ...mainRows,
+          if (thumbClusterWidget != null) ...[
+            SizedBox(height: keyPadding),
+            thumbClusterWidget,
+            SizedBox(height: keyPadding * 2),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget buildThumbCluster(ThumbCluster thumbCluster) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Left thumb cluster
+        buildThumbClusterSide(thumbCluster.leftKeys, true),
+        SizedBox(width: splitWidth * 2),
+        // Right thumb cluster
+        buildThumbClusterSide(thumbCluster.rightKeys, false),
+      ],
+    );
+  }
+
+  Widget buildThumbClusterSide(List<List<String?>> thumbKeys, bool isLeft) {
+    List<Widget> thumbRows = [];
+
+    for (int rowIndex = 0; rowIndex < thumbKeys.length; rowIndex++) {
+      List<Widget> rowWidgets = [];
+      List<String?> keys = thumbKeys[rowIndex];
+
+      // Handle empty rows - render as invisible spacer to maintain row structure
+      if (keys.isEmpty) {
+        thumbRows.add(SizedBox(
+            height: keySize + keyPadding * 2)); // Same height as normal row
+        if (rowIndex < thumbKeys.length - 1) {
+          thumbRows.add(SizedBox(height: keyPadding)); // Row spacing
+        }
+        continue;
+      }
+
+      for (int keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+        String? key = keys[keyIndex];
+        rowWidgets.add(buildKeys(-1, key, keyIndex, isThumbKey: true));
+        if (keyIndex < keys.length - 1) {
+          rowWidgets.add(SizedBox(width: keyPadding));
+        }
+      }
+
+      if (rowWidgets.isNotEmpty) {
+        thumbRows.add(Row(
+          mainAxisAlignment:
+              isLeft ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: rowWidgets,
+        ));
+        if (rowIndex < thumbKeys.length - 1) {
+          thumbRows.add(SizedBox(height: keyPadding));
+        }
+      }
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: thumbRows,
+    );
+  }
+
+  Widget buildSplitMatrixRow(int rowIndex, List<String?> keys) {
+    // Determine split point based on row
+    int leftSideCount = _getLeftSideCount(rowIndex);
+    int rightSideStart = _getRightSideStart(rowIndex, keys.length);
+
+    // Build left hand keys
+    List<Widget> leftKeys = [];
+    for (int i = 0; i < leftSideCount && i < keys.length; i++) {
+      leftKeys.add(buildKeys(rowIndex, keys[i], i));
+      if (i < leftSideCount - 1) {
+        leftKeys.add(SizedBox(width: keyPadding));
+      }
+    }
+
+    // Build right hand keys
+    List<Widget> rightKeys = [];
+    for (int i = rightSideStart; i < keys.length; i++) {
+      rightKeys.add(buildKeys(rowIndex, keys[i], i));
+      if (i < keys.length - 1) {
+        rightKeys.add(SizedBox(width: keyPadding));
+      }
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: keyPadding / 2),
+      child: Row(
+        children: [
+          // Left hand - right aligned
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: leftKeys,
+            ),
+          ),
+          // Split gap
+          SizedBox(width: splitWidth),
+          // Right hand - left aligned
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: rightKeys,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _getLeftSideCount(int rowIndex) {
+    // BEST: Use leftHand data when available (explicit format)
+    if (layout.leftHand != null && rowIndex < layout.leftHand!.rows.length) {
+      int leftCount = layout.leftHand!.rows[rowIndex].length;
+      return leftCount;
+    }
+
+    // SMART: Auto-detect split point by analyzing key density
+    List<String?> row = layout.keys[rowIndex];
+
+    // Strategy 1: Find natural break - look for sequence of empty keys
+    int consecutiveEmpty = 0;
+    int lastNonEmptyIndex = -1;
+
+    for (int i = 0; i < row.length; i++) {
+      if (row[i]?.isEmpty != false) {
+        consecutiveEmpty++;
+      } else {
+        if (consecutiveEmpty >= 2) {
+          // Found a gap of 2+ empty keys, split before the gap
+          return lastNonEmptyIndex + 1;
+        }
+        consecutiveEmpty = 0;
+        lastNonEmptyIndex = i;
+      }
+    }
+
+    // Strategy 2: Split roughly in half (ergonomic keyboards usually slightly left-heavy)
+    int halfPoint = (row.length / 2).floor();
+    return halfPoint;
+  }
+
+  int _getRightSideStart(int rowIndex, int totalKeys) {
+    // FIXED: For new format, right side always starts immediately after left side
+    if (layout.leftHand != null && layout.rightHand != null) {
+      // New explicit format: right side starts right after left side
+      return _getLeftSideCount(rowIndex);
+    }
+
+    // EMERGENCY FIX: Force correct right side start for Glove80
+    if (layout.name.contains("Glove80")) {
+      int leftCount = _getLeftSideCount(rowIndex);
+      List<String?> row = layout.keys[rowIndex];
+
+      // For new format compatibility: right side starts immediately after left
+      if (row.length == 10) {
+        // 5+5 format
+        return leftCount;
+      }
+
+      // Find first non-empty key after position leftCount (old format)
+      for (int i = leftCount; i < row.length; i++) {
+        if (row[i]?.isNotEmpty == true) {
+          return i;
+        }
+      }
+      // Fallback
+      return leftCount + 1;
+    }
+
+    // Generic fallback
+    return _getLeftSideCount(rowIndex);
+  }
+
+  Widget buildRow(int rowIndex, List<String?> keys) {
     List<Widget> rowWidgets = [];
 
     if (keymapStyle != 'Matrix' && keymapStyle != 'Split Matrix') {
@@ -181,16 +450,32 @@ class KeyboardScreen extends StatelessWidget {
       }
     }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: rowWidgets,
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: rowWidgets,
+      ),
     );
   }
 
-  Widget buildKeys(int rowIndex, String key, int keyIndex,
-      {bool isLastKeyFirstRow = false}) {
+  Widget buildKeys(int rowIndex, String? key, int keyIndex,
+      {bool isLastKeyFirstRow = false, bool isThumbKey = false}) {
+    // Handle null as invisible placeholder ONLY
+    if (key == null) {
+      // Invisible placeholder must have SAME total size as visible keys (including padding)
+      return Padding(
+        padding: EdgeInsets.all(keyPadding),
+        child: SizedBox(width: keySize, height: keySize),
+      );
+    }
+
+    // Empty strings should render as visible empty keys, not invisible
+    // Only null should be invisible
+
     bool isShiftPressed = (keyPressStates["LShift"] ?? false) ||
         (keyPressStates["RShift"] ?? false);
+
     if (isShiftPressed) {
       if (customShiftMappings != null &&
           customShiftMappings!.containsKey(key)) {
@@ -199,8 +484,9 @@ class KeyboardScreen extends StatelessWidget {
         key = Mappings.getShiftedSymbol(key) ?? key;
       }
     }
-    String realKey =
-        (layout.foreign ?? false) ? qwerty.keys[rowIndex][keyIndex] : key;
+    String realKey = (layout.foreign ?? false)
+        ? (qwerty.keys[rowIndex][keyIndex] ?? "")
+        : (key ?? "");
 
     String keyStateKey = Mappings.getKeyForSymbol(realKey);
     bool isPressed = keyPressStates[keyStateKey] ?? false;
@@ -209,6 +495,7 @@ class KeyboardScreen extends StatelessWidget {
       keyIndex -= 1;
     }
     Color keyColor;
+
     if (isPressed) {
       keyColor = keyColorPressed;
     } else if (learningModeEnabled && rowIndex < 4) {
@@ -319,8 +606,8 @@ class KeyboardScreen extends StatelessWidget {
       ),
     );
 
-    // Tactile Markers
-    if (rowIndex == 2 && (keyIndex == 3 || keyIndex == 6)) {
+    // Tactile Markers - Use homerow metadata or fallback to QWERTY default
+    if (_shouldShowTactileMarker(rowIndex, keyIndex)) {
       keyWidget = Stack(
         alignment: showAltLayout && altLayout != null
             ? Alignment.center
@@ -437,11 +724,11 @@ class KeyboardScreen extends StatelessWidget {
     if (altLayout == null || rowIndex >= altLayout!.keys.length) {
       return "";
     }
-    List<String> altRow = altLayout!.keys[rowIndex];
+    List<String?> altRow = altLayout!.keys[rowIndex];
     if (keyIndex >= altRow.length) {
       return "";
     }
-    String altKey = altRow[keyIndex];
+    String altKey = altRow[keyIndex] ?? "";
     bool isShiftPressed = (keyPressStates["LShift"] ?? false) ||
         (keyPressStates["RShift"] ?? false);
     if (isShiftPressed) {
@@ -453,6 +740,38 @@ class KeyboardScreen extends StatelessWidget {
       }
     }
     return altKey;
+  }
+
+  bool _shouldShowTactileMarker(int rowIndex, int keyIndex) {
+    // Check if config has homerow metadata at root level
+    if (config != null && config!.homeRow != null) {
+      final homeRowData = config!.homeRow!;
+      final homeRowIndex = homeRowData['rowIndex'] as int;
+
+      // Convert 1-indexed rowIndex to 0-indexed for comparison
+      if (rowIndex == homeRowIndex - 1) {
+        final leftPosition = homeRowData['leftPosition'] as int;
+        final rightPosition = homeRowData['rightPosition'] as int;
+
+        // For split matrix layouts, check left and right hand positions
+        if (layout.leftHand != null && layout.rightHand != null) {
+          int leftSideCount = _getLeftSideCount(rowIndex);
+
+          int leftRowLength = layout.leftHand!.rows[rowIndex].length;
+          int rightRowLength = layout.rightHand!.rows[rowIndex].length;
+          int leftKeyIndex = leftRowLength - leftPosition - 1;
+          int rightKeyIndex = leftSideCount + rightPosition - 2;
+          if (keyIndex == leftKeyIndex) return true;
+          if (keyIndex == rightKeyIndex) return true;
+        } else {
+          if (keyIndex == leftPosition || keyIndex == rightPosition)
+            return true;
+        }
+      }
+      return false;
+    }
+
+    return rowIndex == 2 && (keyIndex == 3 || keyIndex == 6);
   }
 
   Color getFingerColor(int rowIndex, int keyIndex) {

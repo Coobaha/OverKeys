@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +19,7 @@ import 'package:overkeys/services/platform/keyboard_service.dart';
 import 'package:overkeys/utils/key_code_unified.dart';
 import 'package:overkeys/widgets/status_overlay.dart';
 import 'models/keyboard_layouts.dart';
+import 'models/user_config.dart';
 import 'screens/keyboard_screen.dart';
 import 'utils/hooks_unified.dart';
 
@@ -33,6 +35,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   static const double _defaultWindowHeight = 330;
   static const double _defaultTopRowExtraHeight = 80;
   static const double _defaultTopRowExtraWidth = 160;
+  static const double _baseWindowPadding = 40; // Base padding around content
   static const Duration _fadeDuration = Duration(milliseconds: 200);
   static const Duration _overlayDuration = Duration(milliseconds: 1000);
   static const double _opacityStep = 0.05;
@@ -174,6 +177,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   Map<String, String>? _customShiftMappings;
   final Set<String> _activeTriggers = {};
   List<KeyboardLayout> _userLayers = [];
+  UserConfig? _userConfig;
 
   @override
   void initState() {
@@ -324,9 +328,60 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _kanataEnabled = prefs['kanataEnabled'];
       _keyboardFollowsMouse = prefs['keyboardFollowsMouse'];
     });
+
+    // AIDEV-NOTE: Restore saved window position after preferences load
+    await _restoreWindowPosition();
+  }
+
+  // AIDEV-NOTE: Restores window position with validation for resolution changes
+  Future<void> _restoreWindowPosition() async {
+    // Load all preferences to get the window position
+    final prefs = await _prefsService.loadAllPreferences();
+    final savedPosition = prefs['windowPosition'] as Offset?;
+    
+    if (kDebugMode) print('🔧 Restoring window position: $savedPosition');
+    
+    if (savedPosition != null) {
+      // Validate position is still on screen (handle resolution changes)
+      if (await _isPositionValid(savedPosition)) {
+        if (kDebugMode) print('🔧 Position valid, restoring to: $savedPosition');
+        await windowManager.setPosition(savedPosition);
+      } else {
+        if (kDebugMode) print('🔧 Position invalid, using default bottomCenter');
+        // Position is off-screen, use default and save the new position
+        await windowManager.setAlignment(Alignment.bottomCenter);
+        final newPosition = await windowManager.getPosition();
+        await _prefsService.setWindowPosition(newPosition);
+      }
+    } else {
+      if (kDebugMode) print('🔧 No saved position, using default bottomCenter');
+      // Use default position (bottomCenter) for first launch
+      await windowManager.setAlignment(Alignment.bottomCenter);
+    }
+  }
+
+  // AIDEV-NOTE: Validates if position is reasonable (basic bounds checking)
+  Future<bool> _isPositionValid(Offset position) async {
+    try {
+      // Basic validation: ensure position is not extreme values
+      // This handles most cases of invalid positions from resolution changes
+      const minPosition = -100.0; // Allow some off-screen positioning
+      const maxPosition = 5000.0; // Reasonable maximum for most setups
+      
+      return position.dx >= minPosition && 
+             position.dx <= maxPosition &&
+             position.dy >= minPosition && 
+             position.dy <= maxPosition;
+    } catch (e) {
+      // If validation fails, assume position is invalid for safety
+      return false;
+    }
   }
 
   Future<void> _saveAllPreferences() async {
+    // AIDEV-NOTE: Get current window position before saving preferences
+    final currentPosition = await windowManager.getPosition();
+    
     final prefs = {
       // General settings
       'launchAtStartup': _launchAtStartup,
@@ -334,6 +389,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       'autoHideDuration': _autoHideDuration,
       'opacity': _opacity,
       'keyboardLayoutName': _initialKeyboardLayout!.name,
+      'windowPosition': currentPosition,
 
       // Keyboard settings
       'keymapStyle': _keymapStyle,
@@ -442,8 +498,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   Future<void> _loadCustomShiftMappings() async {
     final configService = ConfigService();
     final mappings = await configService.getCustomShiftMappings();
+    final config = await configService.getConfig();
     setState(() {
       _customShiftMappings = mappings;
+      _userConfig = config;
     });
   }
 
@@ -453,6 +511,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         _keyboardLayout = newLayout;
         _updateAutoHideBasedOnLayer(isDefaultUserLayout);
       });
+      _adjustWindowSize(); // Adjust window for new layout
       _fadeIn();
     };
   }
@@ -488,6 +547,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           _keyboardLayout = userLayout;
         }
       });
+      _adjustWindowSize(); // Adjust window for new layout
       _fadeIn();
     }
   }
@@ -548,14 +608,123 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     await _initStartup();
   }
 
+  KeyboardLayout _getCurrentLayout() {
+    return _keyboardLayout;
+  }
+
+  double _calculateRequiredHeight() {
+    KeyboardLayout currentLayout = _getCurrentLayout();
+    
+    // Use actual preference values for accurate calculation
+    double keySize = _keySize;
+    double keyPadding = _keyPadding;
+    
+    // Calculate main keyboard rows height
+    int visibleRows = _showTopRow ? currentLayout.keys.length : currentLayout.keys.length - 1;
+    double mainRowsHeight = visibleRows * (keySize + keyPadding * 2) + (visibleRows - 1) * keyPadding;
+    
+    // Calculate thumb cluster height if present
+    double thumbClusterHeight = 0;
+    if (currentLayout.thumbCluster != null) {
+      // Find maximum rows in left or right thumb cluster
+      int maxThumbRows = math.max(
+        currentLayout.thumbCluster!.leftKeys.length,
+        currentLayout.thumbCluster!.rightKeys.length
+      );
+      thumbClusterHeight = maxThumbRows * (keySize + keyPadding * 2) + 
+                          (maxThumbRows - 1) * keyPadding + 
+                          keyPadding * 2; // Extra spacing between main and thumb
+    }
+    
+    double totalHeight = mainRowsHeight + thumbClusterHeight + _baseWindowPadding * 2;
+    
+    return totalHeight;
+  }
+
+  double _calculateRequiredWidth() {
+    KeyboardLayout currentLayout = _getCurrentLayout();
+    double keySize = _keySize;
+    double keyPadding = _keyPadding;
+    
+    // For split matrix layouts, calculate based on left+right hand + gap
+    if (currentLayout.leftHand != null && currentLayout.rightHand != null) {
+      // Find the maximum keys in any row for left and right hands
+      int maxLeftKeys = 0;
+      int maxRightKeys = 0;
+      
+      for (var row in currentLayout.leftHand!.rows) {
+        // Count non-null keys only
+        int nonNullKeys = row.where((key) => key != null).length;
+        if (nonNullKeys > maxLeftKeys) maxLeftKeys = nonNullKeys;
+      }
+      for (var row in currentLayout.rightHand!.rows) {
+        // Count non-null keys only
+        int nonNullKeys = row.where((key) => key != null).length;
+        if (nonNullKeys > maxRightKeys) maxRightKeys = nonNullKeys;
+      }
+      
+      // Add thumb cluster width if present
+      if (currentLayout.thumbCluster != null) {
+        for (var row in currentLayout.thumbCluster!.leftKeys) {
+          int nonNullKeys = row.where((key) => key != null).length;
+          if (nonNullKeys > maxLeftKeys) maxLeftKeys = nonNullKeys;
+        }
+        for (var row in currentLayout.thumbCluster!.rightKeys) {
+          int nonNullKeys = row.where((key) => key != null).length;
+          if (nonNullKeys > maxRightKeys) maxRightKeys = nonNullKeys;
+        }
+      }
+      
+      // Calculate total width: left hand + gap + right hand + padding
+      double leftWidth = maxLeftKeys * (keySize + keyPadding * 2) + (maxLeftKeys - 1) * keyPadding;
+      double rightWidth = maxRightKeys * (keySize + keyPadding * 2) + (maxRightKeys - 1) * keyPadding;
+      double gap = _splitWidth;
+      
+      // AIDEV-NOTE: Add 20px safety margin to prevent Row overflow
+      return leftWidth + gap + rightWidth + _baseWindowPadding * 2 + 20;
+    } else {
+      // For regular layouts, find the longest row
+      int maxKeys = 0;
+      int startRow = _showTopRow ? 0 : 1;
+      
+      for (int i = startRow; i < currentLayout.keys.length; i++) {
+        if (currentLayout.keys[i].length > maxKeys) {
+          maxKeys = currentLayout.keys[i].length;
+        }
+      }
+      
+      // Account for space bar width if present
+      double totalWidth = maxKeys * (keySize + keyPadding * 2) + (maxKeys - 1) * keyPadding;
+      
+      // Check if any row has space key and adjust
+      for (int i = startRow; i < currentLayout.keys.length; i++) {
+        for (String? key in currentLayout.keys[i]) {
+          if (key == " ") {
+            // Space key is wider
+            totalWidth += _spaceWidth - keySize;
+            break;
+          }
+        }
+      }
+      
+      return totalWidth + _baseWindowPadding * 2 + 20;
+    }
+  }
+
   Future<void> _adjustWindowSize() async {
     _fadeIn();
-    double height =
-        _showTopRow ? _defaultWindowHeight + _defaultTopRowExtraHeight : _defaultWindowHeight;
-    double width =
-        _showTopRow ? _defaultWindowWidth + _defaultTopRowExtraWidth : _defaultWindowWidth;
+    
+    // Calculate precise dimensions based on layout content
+    double height = _calculateRequiredHeight();
+    double width = _calculateRequiredWidth();
+    
     await windowManager.setSize(Size(width, height));
-    await windowManager.setAlignment(Alignment.bottomCenter);
+    
+    // AIDEV-NOTE: Only reset to bottomCenter if no saved position exists
+    final savedPosition = await _prefsService.getWindowPosition();
+    if (savedPosition == null) {
+      await windowManager.setAlignment(Alignment.bottomCenter);
+    }
   }
 
   void _fadeOut() {
@@ -665,6 +834,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
             _physicalKeyToVisualKey.remove(keyName);
           }
         }
+        
       } else {
         // For Windows integer events, just track the mapped key
         _keyPressStates[key] = isPressed;
@@ -1015,6 +1185,22 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     windowManager.blur();
   }
 
+  @override
+  void onWindowMoved() {
+    // AIDEV-NOTE: Save window position when user moves the window
+    if (kDebugMode) print('🔧 Window moved, saving position...');
+    _saveWindowPosition();
+  }
+
+  Future<void> _saveWindowPosition() async {
+    try {
+      final position = await windowManager.getPosition();
+      await _prefsService.setWindowPosition(position);
+    } catch (e) {
+      // Ignore errors during position saving to avoid blocking window movement
+    }
+  }
+
   bool _preferencesLaunching = false;
   Process? _preferencesProcess;
   
@@ -1093,6 +1279,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
               _initialKeyboardLayout = _keyboardLayout;
             }
           });
+          _adjustWindowSize(); // Adjust window for new layout
           _fadeIn();
 
         // Keyboard settings
@@ -1513,6 +1700,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
                       use6ColLayout: _use6ColLayout,
                       keyPressStates: _keyPressStates,
                       customShiftMappings: _customShiftMappings,
+                      config: _userConfig,
                     ),
                   ),
                 ),

@@ -60,7 +60,11 @@ You can copy these layouts from the sample configuration to get started with you
 
 ## Creating Custom Layouts
 
-You can create custom layouts by adding them to the `userLayouts` section in the configuration file. Each layout requires a unique name and a keys array that defines the layout structure:
+You can create custom layouts by adding them to the `userLayouts` section in the configuration file. OverKeys supports two layout formats:
+
+### Standard Format
+
+The standard format uses a simple keys array that defines the layout structure:
 
 ```jsonc
 {
@@ -77,6 +81,37 @@ You can create custom layouts by adding them to the `userLayouts` section in the
         // Fifth row
         [" "]
     ]
+}
+```
+
+### Alternative Format (Split Matrix)
+
+For complex split keyboards like the Glove80, Moonlander, and other ergonomic keyboards with thumb clusters, OverKeys supports an advanced split matrix format with explicit hand definitions.
+
+**📖 Complete Documentation**: See [Split Matrix Layouts](split-matrix-layouts.md) for comprehensive documentation including:
+- Explicit left/right hand definitions
+- Thumb cluster configuration
+- Homerow tactile marker setup
+- Advanced features and troubleshooting
+
+**Quick Example:**
+```jsonc
+{
+    "name": "My Split Layout",
+    "layoutStyle": "split_matrix_explicit", 
+    "leftHand": {
+        "mainRows": [[...], [...]],
+        "thumbRows": [[...]]
+    },
+    "rightHand": {
+        "mainRows": [[...], [...]],
+        "thumbRows": [[...]]
+    },
+    "homeRow": {
+        "rowIndex": 4,
+        "leftPosition": 2,
+        "rightPosition": 2
+    }
 }
 ```
 
