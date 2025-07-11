@@ -57,14 +57,17 @@ jobs:
         run: |
           brew install create-dmg
           timestamp=$(date +"%Y-%m-%d-%H%M")
+          dmg_name="OverKeys-nightly-$timestamp-macOS.dmg"
           create-dmg \
             --volname "OverKeys Nightly" \
             --window-pos 200 120 \
             --window-size 800 400 \
             --icon-size 100 \
             --app-drop-link 600 185 \
-            "OverKeys-nightly-$timestamp-macOS.dmg" \
-            "build/macos/Build/Products/Release/"
+            "$dmg_name" \
+            "build/macos/Build/Products/Release/overkeys.app"
+          echo "DMG_FILENAME=$dmg_name" >> $GITHUB_ENV
+          ls -la "$dmg_name"
             
       - name: Upload Windows artifact
         if: matrix.platform == 'windows'
@@ -79,5 +82,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: OverKeys-nightly-macos
-          path: OverKeys-nightly-*-macOS.dmg
+          path: ${{ env.DMG_FILENAME }}
           retention-days: 30

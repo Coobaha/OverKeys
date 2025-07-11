@@ -39,7 +39,7 @@ jobs:
             --icon-size 100 \
             --app-drop-link 600 185 \
             "OverKeys-${{ github.event.release.tag_name }}-macOS.dmg" \
-            "build/macos/Build/Products/Release/"
+            "build/macos/Build/Products/Release/overkeys.app"
 
       - name: Upload to Release
         run: |
