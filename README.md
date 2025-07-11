@@ -6,7 +6,7 @@
   <img src="assets/images/OK.png" alt="OverKeys Logo" width="160" height="160">
   <h1 align="center">OverKeys</h1>
   
-  <h3 align="center">An open-source keyboard layout visualizer for Windows</h3>
+  <h3 align="center">An open-source keyboard layout visualizer for Windows and macOS</h3>
 
   <p align="center">
     <a href="#getting-started">Install Now</a>
@@ -142,7 +142,7 @@ For complete feature details, see the [documentation](docs/index.md).
 
 ### Installation
 
-OverKeys can be installed through several methods:
+#### Windows
 
 1. **Using Winget (Recommended)**
 
@@ -157,7 +157,30 @@ OverKeys can be installed through several methods:
    - Download and run the latest [EXE installer](https://github.com/conventoangelo/OverKeys/releases/latest).
 
 3. **Portable Version**
-   - Downloade and extract the [portable ZIP file](https://github.com/conventoangelo/OverKeys/releases/latest)
+   - Download and extract the [portable ZIP file](https://github.com/conventoangelo/OverKeys/releases/latest)
+
+#### macOS
+
+1. **Download DMG (Recommended)**
+   - Download the latest [DMG file](https://github.com/conventoangelo/OverKeys/releases/latest) from releases
+   - Open the DMG and drag OverKeys to Applications folder
+
+2. **Security Notice** ⚠️
+   
+   Since OverKeys is not code-signed with an Apple Developer certificate, macOS Gatekeeper will show a security warning on first launch.
+   
+   **To safely bypass this warning:**
+   
+   - Right-click the OverKeys app → select "Open" → click "Open" in the dialog
+   - OR use Terminal: `xattr -d com.apple.quarantine /Applications/OverKeys.app`
+   
+   This is a one-time step. The app will launch normally afterward.
+
+3. **Required Permissions**
+   
+   OverKeys requires the following permissions for keyboard monitoring:
+   - **Accessibility**: System Preferences → Security & Privacy → Privacy → Accessibility
+   - **Input Monitoring**: System Preferences → Security & Privacy → Privacy → Input Monitoring
 
 For detailed installation instructions, see the [Installation Guide](/docs/getting-started/installation.md).
 
@@ -216,14 +239,20 @@ Contributions are what make the open-source community such an amazing place to l
 
 2. **Clone and Build**:
 
-   ```pwsh
+   ```bash
    git clone https://github.com/conventoangelo/OverKeys.git
    cd OverKeys
    flutter pub get
-   flutter run -d windows  # For testing
-   # OR
-   flutter build windows   # For release build
-   # Release executable is located at `build\windows\x64\runner\Release`
+   
+   # For Windows
+   flutter run -d windows      # Testing
+   flutter build windows       # Release build
+   # Release executable: build\windows\x64\runner\Release
+   
+   # For macOS  
+   flutter run -d macos        # Testing
+   flutter build macos         # Release build
+   # Release app bundle: build/macos/Build/Products/Release/overkeys.app
    ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
