@@ -1,0 +1,36 @@
+{
+  "userLayouts": [
+    {
+      "name": "Symbol Layer",
+      "layoutStyle": "staggered",
+      "rows": [
+        ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")"],
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+      ],
+      "trigger": "Cmd+F20",
+      "type": "toggle"
+    },
+    {
+      "name": "Number Layer", 
+      "layoutStyle": "staggered",
+      "rows": [
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+        ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")"]
+      ],
+      "trigger": "Meh+F15",
+      "type": "toggle"
+    },
+    {
+      "name": "Navigation Layer",
+      "layoutStyle": "staggered", 
+      "rows": [
+        ["Home", "Up", "End", "PgUp"],
+        ["Left", "Down", "Right", "PgDn"]
+      ],
+      "trigger": "Hyper+F19",
+      "type": "held"
+    }
+  ],
+  "defaultUserLayout": "Symbol Layer",
+  "_comment": "Trigger aliases: Meh = Ctrl+Alt+Shift, Hyper = Ctrl+Alt+Shift+Cmd"
+}

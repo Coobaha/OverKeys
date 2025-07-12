@@ -24,15 +24,321 @@
           ["`", "SHIFT", "CMD", "ALT", "CTRL"],
           ["\"", "BSPC", "TAB", "⎵", "RET"],
           ["'", "DEL", "STAB", "INS", "ESC"],
-          []
+          [null, null, null, null, null, "F20"]
         ],
         "thumbRows": [
           [],
           [null, null, "SYM"]
         ]
       },
-      "trigger": "F20",
-      "type": "held"
+      "trigger": "alt+cmd+F20",
+      "type": "toggle"
+    },
+    {
+      "name": "Cursor Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          [],
+          [null, "ESC", "INS", "STAB", "DEL", "`"],
+          [null, "RET", "⎵", "TAB", "BSPC", "_CUT"],
+          ["LSHFT", "LPMOD", "LRMOD", "LMMOD", "LIMOD", "_COPY"],
+          ["LCTRL", "SALL", "SLINE", "SWORD", "_FIND", "_PASTE"],
+          ["LCTRL", "_UNDO", "_REDO", "_FPREV", "_FNEXT", null]
+        ],
+        "thumbRows": [
+          ["STAB", "TAB", null],
+          [null, null, null]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          [],
+          ["`", null, null, null, null],
+          ["_CUT", "STAB", "_UNDO", "_REDO", "TAB"],
+          ["_COPY", "LEFT", "UP", "DOWN", "RIGHT", "LSHFT"],
+          ["_PASTE", "_HOME", "PGUP", "PGDN", "_END", "LCTRL"],
+          ["_FIND", "_FPREV", "_FNEXT", "LCTRL", "LCTRL"]
+        ],
+        "thumbRows": [
+          [null, null, null],
+          ["SALL", "SLINE", "SWORD"]
+        ]
+      },
+      "trigger": "alt+cmd+F15",
+      "type": "toggle"
+    },
+    {
+      "name": "Number Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          [],
+          [null, "ESC", "INS", "STAB", "DEL"],
+          [null, "RET", "SPACE", "TAB", "BSPC"],
+          ["LSHFT", "LEFT_PINKY_MOD", "LEFT_RINGY_MOD", "LEFT_MIDDY_MOD", "LEFT_INDEX_MOD"],
+          ["E", "select_all", "select_line", "select_word", "_FIND"],
+          ["_", "_UNDO", "_REDO", "_FPREV", "_FNEXT"]
+        ],
+        "thumbRows": [
+          [null, null, null],
+          ["TOG", null, null]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          ["A", "B", "C", "D", "E"],
+          ["PIPE", "HASH", "DLLR", "CARET", "TILDE"],
+          ["LS(G)", "N7", "N8", "N9", "COLON"],
+          ["K", "N4", "N5", "N6", "MINUS"],
+          ["J", "N1", "N2", "N3", "FSLH"],
+          ["LBKT", "parang_left", "parang_right", "RBKT", "AT"]
+        ],
+        "thumbRows": [
+          ["LT", "GT", "COMMA"],
+          ["EQUAL", "DOT", "N0"]
+        ]
+      },
+      "trigger": "alt+cmd+F16",
+      "type": "toggle"
+    },
+    {
+      "name": "Function Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          [],
+          [null, "ESC", "INS", "STAB", "DEL"],
+          [null, "RET", "SPACE", "TAB", "BSPC"],
+          ["LSHFT", "LEFT_PINKY_MOD", "LEFT_RINGY_MOD", "LEFT_MIDDY_MOD", "LEFT_INDEX_MOD"],
+          [null, "select_all", "select_line", "select_word", "_FIND"],
+          [null, "_UNDO", "_REDO", "_FPREV", "_FNEXT"]
+        ],
+        "thumbRows": [
+          ["TOG", null, null],
+          [null, null, null]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          [],
+          ["C_MEDIA_HOME", "C_PLAY", "C_PREV", "C_NEXT", "C_STOP"],
+          ["LG(LS(N))", "F7", "F8", "F9", "F10"],
+          ["LG(LS(Y))", "F4", "F5", "F6", "F11"],
+          ["LG(LS(A))", "F1", "F2", "F3", "F12"],
+          ["C_BRI_MAX", "C_BRI_UP", "C_BRI_DN", "C_BRI_MIN", "C_BRI_AUTO"]
+        ],
+        "thumbRows": [
+          ["C_PP", "C_PREV", "C_NEXT"],
+          ["C_MUTE", "C_VOL_DN", "C_VOL_UP"]
+        ]
+      },
+      "trigger": "alt+cmd+F17",
+      "type": "toggle"
+    },
+    {
+      "name": "Emoji Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          ["☁️", "🌥️", "⛅", "🌤️", "☀️"],
+          ["🌈", "🏻", "🏼", "🏽", "🏾", "🏿"],
+          ["⬅️", "🦲", "🦰", "🦱", "🦳", "➡️"],
+          ["♀️", "ZWJ", "SKIN", "GENDER", "HAIR", "♂️"],
+          ["👵", "👩", "👧", "👦", "👨", "👴"],
+          ["🎯", "📈", "👶", "🍼", null, null]
+        ],
+        "thumbRows": [
+          ["🏙️", "🌇", "🌃"],
+          ["LSHFT", "🌄", null]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          ["🌑", "🌘", "🌗", "🌖", "🌕"],
+          ["🎉", "❤️", "🔥", "💪", "🧗", "🥼"],
+          ["😂", "🙂", "🤩", "😉", "😨", "🤯"],
+          ["🫰", "👌", "🙏", "😅", "😞", "🤔"],
+          ["💁", "🙆", "🙇", "🙋", "🙅", "🤷"],
+          ["✅", "💯", "⚠️", "❌", "❓", null]
+        ],
+        "thumbRows": [
+          ["🪄", "🙌", "🚀"],
+          ["☝️", "✨", "👍"]
+        ]
+      },
+      "trigger": "alt+cmd+F18",
+      "type": "toggle"
+    },
+    {
+      "name": "World Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          [],
+          [],
+          [null, "°", "ÿ", "ü", "õ", null],
+          ["™", "ñ", "ï", "ë", "ä", null],
+          ["¥", "‹", "¡", "¿", "'", null],
+          ["µ", "§", "¶", "º", "ª", null]
+        ],
+        "thumbRows": [
+          [null, null, null],
+          [null, null, null]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          [],
+          [],
+          [null, "LALT", "RALT", null, null],
+          [null, "LSHFT", "LCTRL", "RCTRL", "RSHFT", null],
+          [],
+          []
+        ],
+        "thumbRows": [
+          [null, null, null],
+          [null, null, "WORLD"]
+        ]
+      },
+      "trigger": "alt+cmd+F19",
+      "type": "toggle"
+    },
+    {
+      "name": "System Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          [],
+          [],
+          [null, null, null, "PAUSE", "PSCRN", "RGB_TOG"],
+          [null, "RGB_SPI", "RGB_SAI", "RGB_HUI", "RGB_BRI", "RGB_EFF"],
+          [null, "RGB_SPD", "RGB_SAD", "RGB_HUD", "RGB_BRD", "RGB_EFR"],
+          [null, null, null, null, "MAGSYSRQ", null]
+        ],
+        "thumbRows": [
+          ["_LOCK", "_SLEEP", "_POWER"],
+          ["SLCK", "KP_NUM", "CAPS"]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          [],
+          [],
+          ["RGB_TOG", "RSHFT", "CMD", "ALT", "CTRL"],
+          ["RGB_EFF", "RGB_BRI", "RGB_HUI", "RGB_SAI", "RGB_SPI", "_LOCK"],
+          ["PAUSE", "RGB_EFR", "RGB_BRD", "RGB_HUD", "RGB_SAD", "RGB_SPD"],
+          ["PSCRN", "MAGSYSRQ", "SLCK", "KP_NUM", "CAPS", "_POWER"]
+        ],
+        "thumbRows": [
+          [null, null, null],
+          [null, null, null]
+        ]
+      },
+      "trigger": "alt+cmd+F21",
+      "type": "toggle"
+    },
+    {
+      "name": "Mouse Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          [],
+          [],
+          [null, null, "SCRL_L", "MOVE_U", "SCRL_R", null],
+          [null, "SCRL_U", "MOVE_L", "MOVE_D", "MOVE_R", "SCRL_U"],
+          [null, "SCRL_D", "MSLOW", "MWARP", "MFAST", "SCRL_D"],
+          []
+        ],
+        "thumbRows": [
+          ["MCLK", "K_APP", "MB5"],
+          ["LCLK", "RCLK", "MB4"]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          [],
+          [],
+          [null, "RSHFT", "CMD", "ALT", "CTRL"],
+          ["SCRL_U", "MFAST", "MWARP", "MSLOW", "LCLK", "MB4"],
+          ["_CUT", "SCRL_D", "SCRL_L", "MOVE_U", "SCRL_R", "RCLK"],
+          ["_PASTE", "_COPY", "MOVE_L", "MOVE_D", "MOVE_R", "MCLK"]
+        ],
+        "thumbRows": [
+          [null, null, null],
+          [null, null, null]
+        ]
+      },
+      "trigger": "alt+cmd+F22",
+      "type": "toggle"
+    },
+    {
+      "name": "Lower Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          [],
+          [],
+          [],
+          [],
+          ["TRANS"],
+          ["RALT", null, null, null, "EMOJI", null]
+        ],
+        "thumbRows": [
+          ["FUNC"],
+          ["CURSOR", "NUMBER", null]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          ["KP_NUM", "KP_SLASH", "KP_MULTIPLY", "KP_MINUS", null],
+          ["KP_CLEAR", "KP_N7", "KP_N8", "KP_N9", "KP_MINUS", "/"],
+          ["KP_LPAR", "KP_N4", "KP_N5", "KP_N6", "KP_PLUS", "KP_MULTIPLY"],
+          ["KP_RPAR", "KP_N1", "KP_N2", "KP_N3", "KP_ENTER", "KP_EQUAL"],
+          ["SYSTEM", "KP_N0", "KP_N0", "KP_COMMA", "KP_DOT", "KP_ENTER"],
+          ["WORLD"]
+        ],
+        "thumbRows": [
+          ["MOUSE", "SYMBOL", null],
+          [null, null, null]
+        ]
+      },
+      "trigger": "alt+cmd+F23",
+      "type": "toggle"
+    },
+    {
+      "name": "Magic Layer",
+      "layoutStyle": "split_matrix_explicit",
+      "leftHand": {
+        "mainRows": [
+          ["BT_CLR", null, null, null, null],
+          ["ABC", "TO1", "CYRILIC", "TO3", "TO4", "TO5"],
+          [null, "RGB_SPI", "RGB_SAI", "RGB_HUI", "RGB_BRI", "RGB_TOG"],
+          ["BOOTLOADER", "RGB_SPD", "RGB_SAD", "RGB_HUD", "RGB_BRD", "RGB_EFF"],
+          ["SYS_RESET", null, null, null, null, null],
+          []
+        ],
+        "thumbRows": [
+          ["BT_2", "BT_3", "TOG25"],
+          ["BT_0", "BT_1", "OUT_USB"]
+        ]
+      },
+      "rightHand": {
+        "mainRows": [
+          [null, null, null, null, "BT_CLR_ALL"],
+          ["TO6", "TO7", null, null, null, null],
+          [],
+          [null, null, null, null, null, "BOOTLOADER"],
+          [null, null, null, null, null, "SYS_RESET"],
+          []
+        ],
+        "thumbRows": [
+          [null, null, null],
+          [null, null, null]
+        ]
+      },
+      "trigger": "alt+cmd+F24",
+      "type": "toggle"
     }
   ],
   "defaultUserLayout": "Symbol Layer",
