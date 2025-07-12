@@ -84,6 +84,25 @@ class MainFlutterWindow: NSWindow {
         } else {
           result(true) // Not needed on older macOS versions
         }
+      case "updateTriggerKeys":
+        if let keys = call.arguments as? [String] {
+          self?.keyboardMonitor?.updateTriggerKeys(keys)
+          result(nil)
+        } else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Expected array of strings", details: nil))
+        }
+      case "getScreenDimensions":
+        // AIDEV-NOTE: Get actual screen dimensions using NSScreen API
+        if let screen = NSScreen.main {
+          let frame = screen.frame
+          let screenSize = [
+            "width": frame.width,
+            "height": frame.height
+          ]
+          result(screenSize)
+        } else {
+          result(FlutterError(code: "NO_SCREEN", message: "Could not get main screen", details: nil))
+        }
       default:
         result(FlutterMethodNotImplemented)
       }

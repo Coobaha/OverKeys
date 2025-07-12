@@ -10,6 +10,8 @@ class AdvancedTab extends StatelessWidget {
   final bool useUserLayout;
   final bool showAltLayout;
   final bool customFontEnabled;
+  final bool debugModeEnabled;
+  final bool thumbDebugModeEnabled;
   final bool use6ColLayout;
   final bool kanataEnabled;
   final bool keyboardFollowsMouse;
@@ -17,6 +19,8 @@ class AdvancedTab extends StatelessWidget {
   final Function(bool) updateUseUserLayout;
   final Function(bool) updateShowAltLayout;
   final Function(bool) updateCustomFontEnabled;
+  final Function(bool) updateDebugModeEnabled;
+  final Function(bool) updateThumbDebugModeEnabled;
   final Function(bool) updateUse6ColLayout;
   final Function(bool) updateKanataEnabled;
   final Function(bool) updateKeyboardFollowsMouse;
@@ -27,6 +31,8 @@ class AdvancedTab extends StatelessWidget {
     required this.useUserLayout,
     required this.showAltLayout,
     required this.customFontEnabled,
+    required this.debugModeEnabled,
+    required this.thumbDebugModeEnabled,
     required this.use6ColLayout,
     required this.kanataEnabled,
     required this.keyboardFollowsMouse,
@@ -34,6 +40,8 @@ class AdvancedTab extends StatelessWidget {
     required this.updateUseUserLayout,
     required this.updateShowAltLayout,
     required this.updateCustomFontEnabled,
+    required this.updateDebugModeEnabled,
+    required this.updateThumbDebugModeEnabled,
     required this.updateUse6ColLayout,
     required this.updateKanataEnabled,
     required this.updateKeyboardFollowsMouse,
@@ -81,6 +89,20 @@ class AdvancedTab extends StatelessWidget {
                 onChanged: updateCustomFontEnabled,
               ),
               ToggleOption(
+                label: 'Debug Mode',
+                value: debugModeEnabled,
+                subtitle:
+                    'Show debug borders and information for split keyboard layouts. Helps with positioning and alignment.',
+                onChanged: updateDebugModeEnabled,
+              ),
+              ToggleOption(
+                label: 'Thumb Debug Mode',
+                value: thumbDebugModeEnabled,
+                subtitle:
+                    'Show thumb cluster debug information with Glove80 key numbering (52-57, 69-74). Helps with thumb key positioning.',
+                onChanged: updateThumbDebugModeEnabled,
+              ),
+              ToggleOption(
                 label: 'Use 6 column layout',
                 subtitle:
                     'Use 6 column layout instead of 5 column split matrix layout. Make sure that a compatible layout is saved in the config file.',
@@ -109,8 +131,9 @@ class AdvancedTab extends StatelessWidget {
               _buildOpenConfigButton(context),
             ],
           ),
-          crossFadeState:
-              advancedSettingsEnabled ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          crossFadeState: advancedSettingsEnabled
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
           sizeCurve: Curves.easeInOut,
         ),
       ],
@@ -130,10 +153,14 @@ class AdvancedTab extends StatelessWidget {
               children: [
                 Text('Open config file',
                     style: TextStyle(
-                        color: colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 16)),
+                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16)),
                 Text(
                   'Turn related advanced setting off then on again to apply changes.',
-                  style: TextStyle(color: colorScheme.onSurface.withAlpha(153), fontSize: 14.0),
+                  style: TextStyle(
+                      color: colorScheme.onSurface.withAlpha(153),
+                      fontSize: 14.0),
                   softWrap: true,
                   overflow: TextOverflow.visible,
                 ),
@@ -142,7 +169,8 @@ class AdvancedTab extends StatelessWidget {
           ),
           const SizedBox(width: 16),
           ElevatedButton.icon(
-            icon: Icon(LucideIcons.fileJson2, color: colorScheme.primary, size: 24),
+            icon: Icon(LucideIcons.fileJson2,
+                color: colorScheme.primary, size: 24),
             label: Text('Open',
                 style: TextStyle(
                   color: colorScheme.primary,
@@ -167,7 +195,8 @@ class AdvancedTab extends StatelessWidget {
 
                 // AIDEV-NOTE: Platform-specific file opening
                 if (Platform.isWindows) {
-                  await Process.start('cmd.exe', ['/c', 'start', '', configPath]);
+                  await Process.start(
+                      'cmd.exe', ['/c', 'start', '', configPath]);
                 } else if (Platform.isMacOS) {
                   await Process.start('open', [configPath]);
                 } else if (Platform.isLinux) {

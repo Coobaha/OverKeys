@@ -14,7 +14,8 @@ String getKeyFromKeyCodeShift(int keyCode, bool isShiftDown) {
   } else if (Platform.isMacOS) {
     return macos_keys.getKeyFromKeyCodeShift(keyCode, isShiftDown);
   } else {
-    throw UnsupportedError('Platform ${Platform.operatingSystem} is not supported');
+    throw UnsupportedError(
+        'Platform ${Platform.operatingSystem} is not supported');
   }
 }
 

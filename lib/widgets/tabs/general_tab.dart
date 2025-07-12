@@ -8,11 +8,17 @@ class GeneralTab extends StatefulWidget {
   final double autoHideDuration;
   final String keyboardLayoutName;
   final double opacity;
+  final double customLayerDelay;
+  final double defaultLayerDelay;
+  final double quickSuccessionWindow;
   final Function(bool) updateLaunchAtStartup;
   final Function(bool) updateAutoHideEnabled;
   final Function(double) updateAutoHideDuration;
   final Function(String) updateKeyboardLayoutName;
   final Function(double) updateOpacity;
+  final Function(double) updateCustomLayerDelay;
+  final Function(double) updateDefaultLayerDelay;
+  final Function(double) updateQuickSuccessionWindow;
 
   const GeneralTab({
     super.key,
@@ -21,11 +27,17 @@ class GeneralTab extends StatefulWidget {
     required this.autoHideDuration,
     required this.keyboardLayoutName,
     required this.opacity,
+    required this.customLayerDelay,
+    required this.defaultLayerDelay,
+    required this.quickSuccessionWindow,
     required this.updateLaunchAtStartup,
     required this.updateAutoHideEnabled,
     required this.updateAutoHideDuration,
     required this.updateKeyboardLayoutName,
     required this.updateOpacity,
+    required this.updateCustomLayerDelay,
+    required this.updateDefaultLayerDelay,
+    required this.updateQuickSuccessionWindow,
   });
 
   @override
@@ -35,12 +47,18 @@ class GeneralTab extends StatefulWidget {
 class _GeneralTabState extends State<GeneralTab> {
   late double _localAutoHideDuration;
   late double _localOpacity;
+  late double _localCustomLayerDelay;
+  late double _localDefaultLayerDelay;
+  late double _localQuickSuccessionWindow;
 
   @override
   void initState() {
     super.initState();
     _localAutoHideDuration = widget.autoHideDuration;
     _localOpacity = widget.opacity.clamp(0.1, 1.0);
+    _localCustomLayerDelay = widget.customLayerDelay;
+    _localDefaultLayerDelay = widget.defaultLayerDelay;
+    _localQuickSuccessionWindow = widget.quickSuccessionWindow;
   }
 
   @override
@@ -51,6 +69,15 @@ class _GeneralTabState extends State<GeneralTab> {
     }
     if (oldWidget.opacity != widget.opacity) {
       _localOpacity = widget.opacity.clamp(0.1, 1.0);
+    }
+    if (oldWidget.customLayerDelay != widget.customLayerDelay) {
+      _localCustomLayerDelay = widget.customLayerDelay;
+    }
+    if (oldWidget.defaultLayerDelay != widget.defaultLayerDelay) {
+      _localDefaultLayerDelay = widget.defaultLayerDelay;
+    }
+    if (oldWidget.quickSuccessionWindow != widget.quickSuccessionWindow) {
+      _localQuickSuccessionWindow = widget.quickSuccessionWindow;
     }
   }
 
@@ -109,6 +136,57 @@ class _GeneralTabState extends State<GeneralTab> {
           value: widget.keyboardLayoutName,
           options: availableLayouts.map((layout) => (layout.name)).toList(),
           onChanged: (value) => widget.updateKeyboardLayoutName(value!),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Smart Layer Visibility',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        SliderOption(
+          label: 'Custom layer delay (seconds)',
+          subtitle: 'Delay before showing custom layers when inactive',
+          value: _localCustomLayerDelay / 1000.0,
+          min: 0.1,
+          max: 3.0,
+          divisions: 29,
+          onChanged: (value) {
+            setState(() => _localCustomLayerDelay = (value * 1000).round().toDouble());
+          },
+          onChangeEnd: (value) {
+            widget.updateCustomLayerDelay((value * 1000).round().toDouble());
+          },
+          valueDisplayFormatter: (value) => value.toStringAsFixed(1),
+        ),
+        SliderOption(
+          label: 'Default layer delay (seconds)',
+          subtitle: 'Delay before showing default layer when inactive', 
+          value: _localDefaultLayerDelay / 1000.0,
+          min: 0.1,
+          max: 2.0,
+          divisions: 19,
+          onChanged: (value) {
+            setState(() => _localDefaultLayerDelay = (value * 1000).round().toDouble());
+          },
+          onChangeEnd: (value) {
+            widget.updateDefaultLayerDelay((value * 1000).round().toDouble());
+          },
+          valueDisplayFormatter: (value) => value.toStringAsFixed(1),
+        ),
+        SliderOption(
+          label: 'Quick succession window (ms)',
+          subtitle: 'Skip overlay for any keypresses within this timeframe',
+          value: _localQuickSuccessionWindow,
+          min: 50.0,
+          max: 500.0,
+          divisions: 18,
+          onChanged: (value) {
+            setState(() => _localQuickSuccessionWindow = value.round().toDouble());
+          },
+          onChangeEnd: (value) {
+            widget.updateQuickSuccessionWindow(value.round().toDouble());
+          },
+          valueDisplayFormatter: (value) => '${value.round()}ms',
         ),
         Text(
           'Tip: Press ESC key to close the preferences window',

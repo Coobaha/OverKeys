@@ -7,9 +7,32 @@ class KeyboardMonitor {
     private var runLoopSource: CFRunLoopSource?
     private var channel: FlutterMethodChannel?
     private var isMonitoring = false
+    private var triggerKeys: Set<String> = []
 
     init(channel: FlutterMethodChannel) {
         self.channel = channel
+    }
+
+    func updateTriggerKeys(_ keys: [String]) {
+        // AIDEV-NOTE: Normalize triggers to avoid case/order sensitivity
+        self.triggerKeys = Set(keys.map { normalizeTrigger($0) })
+    }
+    
+    // AIDEV-NOTE: Normalize trigger strings for consistent matching
+    private func normalizeTrigger(_ trigger: String) -> String {
+        let parts = trigger.lowercased().components(separatedBy: "+")
+        let key = parts.last ?? ""
+        let modifiers = Set(parts.dropLast())
+        
+        var result: [String] = []
+        // Always use same order: cmd, alt, ctrl, shift, key
+        if modifiers.contains("cmd") { result.append("cmd") }
+        if modifiers.contains("alt") { result.append("alt") }
+        if modifiers.contains("ctrl") { result.append("ctrl") }
+        if modifiers.contains("shift") { result.append("shift") }
+        result.append(key)
+        
+        return result.joined(separator: "+")
     }
 
     func startMonitoring() {
@@ -29,7 +52,7 @@ class KeyboardMonitor {
             }
         }
 
-        let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+        let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
 
         guard let eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -38,8 +61,8 @@ class KeyboardMonitor {
             eventsOfInterest: CGEventMask(eventMask),
             callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
                 let keyboardMonitor = Unmanaged<KeyboardMonitor>.fromOpaque(refcon!).takeUnretainedValue()
-                keyboardMonitor.handleKeyEvent(event: event, type: type)
-                return Unmanaged.passUnretained(event)
+                let shouldConsume = keyboardMonitor.handleKeyEvent(event: event, type: type)
+                return shouldConsume ? nil : Unmanaged.passUnretained(event)
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -73,26 +96,58 @@ class KeyboardMonitor {
         isMonitoring = false
     }
 
-    private func handleKeyEvent(event: CGEvent, type: CGEventType) {
+    private func handleKeyEvent(event: CGEvent, type: CGEventType) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let isPressed = type == .keyDown
+
+        // AIDEV-NOTE: Handle different event types - flagsChanged for modifiers, keyDown/keyUp for regular keys
+        let isPressed: Bool
+        if type == .flagsChanged {
+            // For modifier keys, determine press/release based on flag state
+            let flags = event.flags
+            isPressed = isModifierPressed(keyCode: Int(keyCode), flags: flags)
+        } else {
+            // For regular keys, use the event type
+            isPressed = type == .keyDown
+        }
+
         let flags = event.flags
-        let isShiftDown = flags.contains(.maskShift)
+
+        // AIDEV-NOTE: Capture all modifier states including left/right distinction
+        // AIDEV-NOTE: Use available CGEventFlags constants - specific left/right detection requires additional logic
+        let modifiers: [String: Bool] = [
+            "shift": flags.contains(.maskShift),
+            "ctrl": flags.contains(.maskControl),
+            "alt": flags.contains(.maskAlternate),
+            "cmd": flags.contains(.maskCommand),
+            // macOS doesn't provide direct left/right modifier detection via CGEventFlags
+            // These would require additional Carbon Event Manager or other APIs
+            "lshift": flags.contains(.maskShift),  // Fallback to general shift
+            "rshift": flags.contains(.maskShift),  // Fallback to general shift
+            "lctrl": flags.contains(.maskControl), // Fallback to general ctrl
+            "rctrl": flags.contains(.maskControl), // Fallback to general ctrl
+            "lalt": flags.contains(.maskAlternate), // Fallback to general alt
+            "ralt": flags.contains(.maskAlternate), // Fallback to general alt
+            "lcmd": flags.contains(.maskCommand),   // Fallback to general cmd
+            "rcmd": flags.contains(.maskCommand)    // Fallback to general cmd
+        ]
 
         // Convert macOS key code to string
         let keyString = macOSKeyCodeToString(keyCode: Int(keyCode))
 
-        // Send event to Flutter
-        let eventData: [Any] = [keyString, isPressed, isShiftDown]
+        // Send event to Flutter with full modifier data
+        let eventData: [Any] = [keyString, isPressed, modifiers]
 
+        // AIDEV-NOTE: Check if this is a registered trigger key that should be consumed
+        let triggerString = createTriggerString(keyString: keyString, modifiers: modifiers)
+        let normalizedTrigger = normalizeTrigger(triggerString)
+        let shouldConsume = triggerKeys.contains(normalizedTrigger)
+        
+        // AIDEV-NOTE: Send all events to Flutter for processing (display updates, etc.)
         DispatchQueue.main.async {
             self.channel?.invokeMethod("onKeyEvent", arguments: eventData)
         }
 
-        // Handle session events (simplified for now)
-        if type == .keyDown {
-            // You could add session lock/unlock detection here if needed
-        }
+        return shouldConsume
     }
 
     private func macOSKeyCodeToString(keyCode: Int) -> String {
@@ -125,7 +180,7 @@ class KeyboardMonitor {
         case 0x07: return "X"
         case 0x10: return "Y"
         case 0x06: return "Z"
-        
+
         // Numbers
         case 0x1D: return "0"
         case 0x12: return "1"
@@ -137,7 +192,7 @@ class KeyboardMonitor {
         case 0x1A: return "7"
         case 0x1C: return "8"
         case 0x19: return "9"
-        
+
         // Function keys
         case 0x7A: return "F1"
         case 0x78: return "F2"
@@ -159,7 +214,7 @@ class KeyboardMonitor {
         case 0x4F: return "F18"
         case 0x50: return "F19"
         case 0x5A: return "F20"
-        
+
         // Special keys
         case 0x24: return "Enter"
         case 0x30: return "Tab"
@@ -175,7 +230,7 @@ class KeyboardMonitor {
         case 0x7C: return "Right"
         case 0x7E: return "Up"
         case 0x7D: return "Down"
-        
+
         // Modifier keys
         case 0x38: return "LShift"
         case 0x3C: return "RShift"
@@ -187,7 +242,7 @@ class KeyboardMonitor {
         case 0x36: return "RCmd"
         case 0x39: return "CapsLock"
         case 0x31: return "Space"
-        
+
         // Keypad
         case 0x52: return "0" // Keypad 0
         case 0x53: return "1" // Keypad 1
@@ -204,7 +259,7 @@ class KeyboardMonitor {
         case 0x4E: return "-" // Keypad -
         case 0x41: return "." // Keypad .
         case 0x4B: return "/" // Keypad /
-        
+
         // Punctuation (basic mapping without shift)
         case 0x2B: return ","
         case 0x2F: return "."
@@ -217,8 +272,48 @@ class KeyboardMonitor {
         case 0x2A: return "\\"
         case 0x18: return "="
         case 0x1B: return "-"
-        
+
         default: return "Unknown"
+        }
+    }
+
+    // AIDEV-NOTE: Create trigger string matching exact Flutter format from config
+    private func createTriggerString(keyString: String, modifiers: [String: Bool]) -> String {
+        var parts: [String] = []
+
+        // AIDEV-NOTE: Always build explicit modifier combinations, no "hyper" shortcut
+        let hasCtrl = modifiers["ctrl"] ?? false
+        let hasAlt = modifiers["alt"] ?? false
+        let hasCmd = modifiers["cmd"] ?? false
+        let hasShift = modifiers["shift"] ?? false
+
+        // AIDEV-NOTE: Match exact order and case from Flutter config: cmd+alt+ctrl+shift+F15 (lowercase)
+        if hasCmd { parts.append("cmd") }
+        if hasAlt { parts.append("alt") }
+        if hasCtrl { parts.append("ctrl") }
+        if hasShift { parts.append("shift") }
+
+        // Add the key (keep original case to match config format)
+        parts.append(keyString)
+
+        return parts.joined(separator: "+")
+    }
+
+    // AIDEV-NOTE: Determine if a modifier key is pressed based on keyCode and flags
+    private func isModifierPressed(keyCode: Int, flags: CGEventFlags) -> Bool {
+        switch keyCode {
+        case 0x38, 0x3C: // LShift, RShift
+            return flags.contains(.maskShift)
+        case 0x3B, 0x3E: // LControl, RControl
+            return flags.contains(.maskControl)
+        case 0x3A, 0x3D: // LAlt, RAlt
+            return flags.contains(.maskAlternate)
+        case 0x37, 0x36: // Cmd, RCmd
+            return flags.contains(.maskCommand)
+        case 0x39: // CapsLock
+            return flags.contains(.maskAlphaShift)
+        default:
+            return false
         }
     }
 

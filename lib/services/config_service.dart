@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import 'package:flutter/foundation.dart';
 import '../models/user_config.dart';
 import '../models/keyboard_layouts.dart';
@@ -11,7 +12,7 @@ class ConfigService {
 
   Future<String> get _configPath async {
     final directory = await getApplicationSupportDirectory();
-    return '${directory.path}\\$_configFileName';
+    return path.join(directory.path, _configFileName);
   }
 
   Future<String> get configPath => _configPath;
@@ -57,7 +58,8 @@ class ConfigService {
     final config = await loadConfig();
 
     if (config.defaultUserLayout == null) {
-      debugPrint('Cannot get user layout: defaultUserLayout is not defined in the config file');
+      debugPrint(
+          'Cannot get user layout: defaultUserLayout is not defined in the config file');
       return null;
     }
 
@@ -72,7 +74,8 @@ class ConfigService {
     }
 
     try {
-      return availableLayouts.firstWhere((layout) => layout.name == defaultLayoutName);
+      return availableLayouts
+          .firstWhere((layout) => layout.name == defaultLayoutName);
     } catch (e) {
       if (kDebugMode) {
         print('Default user layout "$defaultLayoutName" not found');
@@ -85,7 +88,8 @@ class ConfigService {
     final config = await loadConfig();
 
     if (config.altLayout == null) {
-      debugPrint('Cannot get alt layout: altLayout is not defined in the config file');
+      debugPrint(
+          'Cannot get alt layout: altLayout is not defined in the config file');
       return null;
     }
 
@@ -100,7 +104,8 @@ class ConfigService {
     }
 
     try {
-      return availableLayouts.firstWhere((layout) => layout.name == altLayoutName);
+      return availableLayouts
+          .firstWhere((layout) => layout.name == altLayoutName);
     } catch (e) {
       if (kDebugMode) {
         print('Alt layout "$altLayoutName" not found');
@@ -113,7 +118,8 @@ class ConfigService {
     final config = await loadConfig();
 
     if (config.customFont == null) {
-      debugPrint('Cannot get custom font: customFont is not defined in the config file');
+      debugPrint(
+          'Cannot get custom font: customFont is not defined in the config file');
       return null;
     }
 
@@ -123,6 +129,11 @@ class ConfigService {
   Future<Map<String, String>?> getCustomShiftMappings() async {
     final config = await loadConfig();
     return config.customShiftMappings;
+  }
+
+  Future<Map<String, String>?> getActionMappings() async {
+    final config = await loadConfig();
+    return config.actionMappings;
   }
 
   Future<UserConfig?> getConfig() async {

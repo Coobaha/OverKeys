@@ -29,7 +29,7 @@ final Map<int, String> _macOSKeyCodeMap = {
   0x07: 'X',
   0x10: 'Y',
   0x06: 'Z',
-  
+
   // Numbers
   0x1D: '0',
   0x12: '1',
@@ -41,7 +41,7 @@ final Map<int, String> _macOSKeyCodeMap = {
   0x1A: '7',
   0x1C: '8',
   0x19: '9',
-  
+
   // Function keys
   0x7A: 'F1',
   0x78: 'F2',
@@ -63,7 +63,7 @@ final Map<int, String> _macOSKeyCodeMap = {
   0x4F: 'F18',
   0x50: 'F19',
   0x5A: 'F20',
-  
+
   // Special keys
   0x24: 'Enter',
   0x30: 'Tab',
@@ -79,7 +79,7 @@ final Map<int, String> _macOSKeyCodeMap = {
   0x7C: 'Right',
   0x7E: 'Up',
   0x7D: 'Down',
-  
+
   // Modifier keys
   0x38: 'LShift',
   0x3C: 'RShift',
@@ -91,7 +91,7 @@ final Map<int, String> _macOSKeyCodeMap = {
   0x36: 'RCmd',
   0x39: 'CapsLock',
   0x31: ' ', // Space
-  
+
   // Keypad
   0x52: '0', // Keypad 0
   0x53: '1', // Keypad 1
@@ -132,7 +132,7 @@ final Map<(int, bool), String> _macOSKeyCodeShiftMap = {
   (0x1C, true): '*',
   (0x19, false): '9',
   (0x19, true): '(',
-  
+
   // Punctuation
   (0x2B, false): ',', // Comma
   (0x2B, true): '<',

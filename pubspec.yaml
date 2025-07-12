@@ -24,9 +24,11 @@ dependencies:
   launch_at_startup: ^0.5.1
   package_info_plus: ^8.0.2
   path_provider: ^2.1.2
+  path: ^1.9.0
   url_launcher: ^6.3.1
   hotkey_manager: ^0.2.3
   lucide_icons: ^0.257.0
+  auto_size_text: ^3.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -5,7 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:overkeys/services/config_service.dart';
 import 'package:overkeys/models/keyboard_layouts.dart';
 
-typedef LayerChangeCallback = void Function(KeyboardLayout layout, bool isDefaultUserLayout);
+typedef LayerChangeCallback = void Function(
+    KeyboardLayout layout, bool isDefaultUserLayout);
 
 class KanataService {
   Socket? _kanataSocket;
@@ -76,7 +77,9 @@ class KanataService {
       Map<String, dynamic> jsonData = jsonDecode(message);
 
       if (jsonData.containsKey('LayerChange')) {
-        String layoutName = jsonData['LayerChange']['new']?.toString().trim().toUpperCase() ?? '';
+        String layoutName =
+            jsonData['LayerChange']['new']?.toString().trim().toUpperCase() ??
+                '';
 
         if (layoutName.isNotEmpty && onLayerChange != null) {
           try {
@@ -84,13 +87,13 @@ class KanataService {
               (layout) => layout.name.toUpperCase() == layoutName,
               orElse: () => availableLayouts.firstWhere(
                 (layout) => layout.name.toUpperCase() == layoutName,
-                orElse: () =>
-                    throw Exception('Layout not found in Kanata layers or available layouts'),
+                orElse: () => throw Exception(
+                    'Layout not found in Kanata layers or available layouts'),
               ),
             );
 
-            bool isDefaultUserLayout =
-                newLayout.name.toUpperCase() == _defaultUserLayout.toUpperCase();
+            bool isDefaultUserLayout = newLayout.name.toUpperCase() ==
+                _defaultUserLayout.toUpperCase();
 
             onLayerChange!(newLayout, isDefaultUserLayout);
 

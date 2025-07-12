@@ -7,12 +7,13 @@ SendPort? sendPort;
 void setHook(SendPort port) {
   sendPort = port;
   _keyboardService = KeyboardService.create();
-  
+
   _keyboardService.startMonitoring((List<dynamic> message) {
     sendPort?.send(message);
-    
+
     // Handle session events - for macOS we could add sleep/wake detection here
     // For now, just pass through the keyboard events
+    return false; // Don't consume events at this level - let the main app handle it
   });
 }
 

@@ -16,8 +16,10 @@ import 'package:overkeys/services/config_service.dart';
 import 'package:overkeys/services/kanata_service.dart';
 import 'package:overkeys/services/preferences_service.dart';
 import 'package:overkeys/services/platform/keyboard_service.dart';
+import 'package:overkeys/services/smart_visibility_manager.dart';
 import 'package:overkeys/utils/key_code_unified.dart';
 import 'package:overkeys/widgets/status_overlay.dart';
+import 'package:overkeys/widgets/layer_selector.dart';
 import 'models/keyboard_layouts.dart';
 import 'models/user_config.dart';
 import 'screens/keyboard_screen.dart';
@@ -31,11 +33,15 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
-  static const double _defaultWindowWidth = 1000;
-  static const double _defaultWindowHeight = 330;
-  static const double _defaultTopRowExtraHeight = 80;
-  static const double _defaultTopRowExtraWidth = 160;
   static const double _baseWindowPadding = 40; // Base padding around content
+
+  // AIDEV-NOTE: Cache maximum layout width to prevent recalculation on layer switches
+  double? _cachedMaxLayoutWidth;
+  double? _cachedMaxLeftHandWidth;
+  double? _cachedMaxRightHandWidth;
+
+  // AIDEV-NOTE: Get cached maximum layout width for consistent positioning
+  double? get maxLayoutWidth => _cachedMaxLayoutWidth;
   static const Duration _fadeDuration = Duration(milliseconds: 200);
   static const Duration _overlayDuration = Duration(milliseconds: 1000);
   static const double _opacityStep = 0.05;
@@ -44,6 +50,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   // UI state
   bool _isWindowVisible = true;
+  bool _isLayoutInitialized = false;
+  bool _isInitializing = true;
   bool _ignoreMouseEvents = true;
   Timer? _autoHideTimer;
   Timer? _opacityDebounceTimer;
@@ -66,7 +74,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   bool _showTopRow = false;
   bool _showGraveKey = false;
   double _keySize = 48;
-  double _keyBorderRadius = 12;
+  double _keyBorderRadius = 2;
   double _keyBorderThickness = 0;
   double _keyPadding = 3;
   double _spaceWidth = 320;
@@ -111,6 +119,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     key: PhysicalKeyboardKey.keyQ,
     modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
   );
+  final HotKey _layerSwitchingHotKey = HotKey(
+    key: PhysicalKeyboardKey.keyL,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
   HotKey _autoHideHotKey = HotKey(
     key: PhysicalKeyboardKey.keyW,
     modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
@@ -137,6 +149,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   bool _enablePreferencesHotKey = true;
   bool _enableIncreaseOpacityHotKey = true;
   bool _enableDecreaseOpacityHotKey = true;
+  final bool _enableLayerSwitchingHotKey = false;
 
   // Learn settings
   bool _learningModeEnabled = false;
@@ -156,10 +169,24 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   bool _initialShowAltLayout = false;
   KeyboardLayout? _altLayout;
   bool _customFontEnabled = false;
+  bool _debugModeEnabled = false;
+  bool _thumbDebugModeEnabled = false;
   bool _use6ColLayout = false;
   bool _kanataEnabled = false;
   bool _keyboardFollowsMouse = false;
   Timer? _mouseCheckTimer;
+
+  // Smart visibility manager
+  late SmartVisibilityManager _smartVisibilityManager;
+
+  // Track if we're in a toggled layer state (not just returned to default)
+  bool _isInToggledLayer = false;
+
+  // Track pressed trigger combinations to ensure releases are also consumed
+  final Set<String> _pressedTriggerCombinations = <String>{};
+
+  // Layer switching mode
+  bool _layerSwitchingMode = false;
 
   // Services
   final PreferencesService _prefsService = PreferencesService();
@@ -173,8 +200,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   // Misc
   final Map<String, bool> _keyPressStates = {};
-  final Map<String, String> _physicalKeyToVisualKey = {}; // Track physical->visual mapping
+  final Map<String, String> _physicalKeyToVisualKey =
+      {}; // Track physical->visual mapping
   Map<String, String>? _customShiftMappings;
+  Map<String, String>? _actionMappings;
   final Set<String> _activeTriggers = {};
   List<KeyboardLayout> _userLayers = [];
   UserConfig? _userConfig;
@@ -182,30 +211,47 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   @override
   void initState() {
     super.initState();
+    // Initialize SmartVisibilityManager with default values
+    _smartVisibilityManager = SmartVisibilityManager(
+      defaultLayerDelay: 500.0,
+      customLayerDelay: 1000.0,
+      quickSuccessionWindow: 200.0,
+      debugEnabled: false,
+    );
     _initialize();
   }
 
   Future<void> _initialize() async {
     await _loadAllPreferences();
+    // AIDEV-NOTE: Load user configuration immediately to ensure correct layout is set
+    await _loadConfiguration();
     trayManager.addListener(this);
     windowManager.addListener(this);
     _setupTray();
-    _setupKeyListener();
+    _setupKeyListener(); // Now called AFTER _loadConfiguration completes
     _setupHotKeys();
     _setupMethodHandler();
     _initStartup();
     _setupKanataLayerChangeHandler();
-    _loadConfiguration();
-    if (_showTopRow) {
-      _adjustWindowSize();
-    }
+    // Window size adjustment now happens in _loadAllPreferences() before position restoration
     if (_autoHideEnabled) {
       _resetAutoHideTimer();
     }
-    // Ensure keyboard is visible after initialization
-    setState(() {
-      _isWindowVisible = true;
-      _opacity = _lastOpacity > 0 ? _lastOpacity : 0.6;
+    // AIDEV-NOTE: Delay positioning and visibility until layout stabilizes
+    Future.delayed(const Duration(milliseconds: 100), () async {
+      await _restoreWindowPosition();
+      await _adjustWindowSize();
+
+      // Show keyboard layout as initialized but keep it invisible
+      setState(() {
+        _isLayoutInitialized = true;
+        // Don't set _isWindowVisible yet - wait for final position
+      });
+
+      setState(() {
+        _isInitializing = false; // Mark initialization as complete
+        _isWindowVisible = true; // Now safe to show
+      });
     });
   }
 
@@ -217,6 +263,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     _autoHideTimer?.cancel();
     _overlayTimer?.cancel();
     _mouseCheckTimer?.cancel();
+    _smartVisibilityManager.dispose();
     _kanataService.dispose();
     _keyboardService?.dispose();
     // No process to kill anymore
@@ -227,8 +274,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   void _startMouseTracking() {
     _mouseCheckTimer?.cancel();
     if (_keyboardFollowsMouse && _advancedSettingsEnabled) {
-      _mouseCheckTimer = Timer.periodic(const Duration(milliseconds: 500),
-          (_) => windowManager.setAlignment(Alignment.bottomCenter));
+      // AIDEV-NOTE: Mouse tracking should follow cursor, not force bottom center
+      // TODO: Implement actual cursor following logic
     }
   }
 
@@ -246,8 +293,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _autoHideDuration = prefs['autoHideDuration'];
       _opacity = prefs['opacity'];
       _lastOpacity = prefs['opacity'];
-      _keyboardLayout =
-          availableLayouts.firstWhere((layout) => layout.name == prefs['keyboardLayoutName']);
+      _keyboardLayout = availableLayouts
+          .firstWhere((layout) => layout.name == prefs['keyboardLayoutName']);
       _initialKeyboardLayout = _keyboardLayout;
 
       // Keyboard settings
@@ -305,8 +352,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _enableAutoHideHotKey = prefs['enableAutoHideHotKey'] ?? true;
       _enableToggleMoveHotKey = prefs['enableToggleMoveHotKey'] ?? true;
       _enablePreferencesHotKey = prefs['enablePreferencesHotKey'] ?? true;
-      _enableIncreaseOpacityHotKey = prefs['enableIncreaseOpacityHotKey'] ?? true;
-      _enableDecreaseOpacityHotKey = prefs['enableDecreaseOpacityHotKey'] ?? true;
+      _enableIncreaseOpacityHotKey =
+          prefs['enableIncreaseOpacityHotKey'] ?? true;
+      _enableDecreaseOpacityHotKey =
+          prefs['enableDecreaseOpacityHotKey'] ?? true;
 
       // Learn settings
       _learningModeEnabled = prefs['learningModeEnabled'];
@@ -324,13 +373,29 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _useUserLayout = prefs['useUserLayout'];
       _showAltLayout = prefs['showAltLayout'];
       _customFontEnabled = prefs['customFontEnabled'];
+      _debugModeEnabled = prefs['debugModeEnabled'];
+      _thumbDebugModeEnabled = prefs['thumbDebugModeEnabled'];
       _use6ColLayout = prefs['use6ColLayout'];
       _kanataEnabled = prefs['kanataEnabled'];
+      _layerSwitchingMode = prefs['layerSwitchingMode'] ?? false;
       _keyboardFollowsMouse = prefs['keyboardFollowsMouse'];
+
+      // Update SmartVisibilityManager with loaded preferences
+      _smartVisibilityManager.updateDelays(
+        defaultLayerDelay: prefs['defaultUserLayoutShowDelay'] ?? 500.0,
+        customLayerDelay: prefs['customLayerDelay'] ?? 1000.0,
+      );
+
+      // Update debug mode setting
+      _smartVisibilityManager = SmartVisibilityManager(
+        defaultLayerDelay: prefs['defaultUserLayoutShowDelay'] ?? 500.0,
+        customLayerDelay: prefs['customLayerDelay'] ?? 1000.0,
+        quickSuccessionWindow: prefs['quickSuccessionWindow'] ?? 200.0,
+        debugEnabled: _debugModeEnabled,
+      );
     });
 
-    // AIDEV-NOTE: Restore saved window position after preferences load
-    await _restoreWindowPosition();
+    // AIDEV-NOTE: Window sizing and positioning will happen after initialization completes
   }
 
   // AIDEV-NOTE: Restores window position with validation for resolution changes
@@ -338,50 +403,76 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     // Load all preferences to get the window position
     final prefs = await _prefsService.loadAllPreferences();
     final savedPosition = prefs['windowPosition'] as Offset?;
-    
-    if (kDebugMode) print('🔧 Restoring window position: $savedPosition');
-    
+
     if (savedPosition != null) {
       // Validate position is still on screen (handle resolution changes)
       if (await _isPositionValid(savedPosition)) {
-        if (kDebugMode) print('🔧 Position valid, restoring to: $savedPosition');
-        await windowManager.setPosition(savedPosition);
+        await _setProgrammaticPosition(savedPosition);
       } else {
-        if (kDebugMode) print('🔧 Position invalid, using default bottomCenter');
         // Position is off-screen, use default and save the new position
-        await windowManager.setAlignment(Alignment.bottomCenter);
+        await _setProgrammaticAlignment(Alignment.bottomCenter);
         final newPosition = await windowManager.getPosition();
         await _prefsService.setWindowPosition(newPosition);
       }
     } else {
-      if (kDebugMode) print('🔧 No saved position, using default bottomCenter');
       // Use default position (bottomCenter) for first launch
-      await windowManager.setAlignment(Alignment.bottomCenter);
+      await _setProgrammaticAlignment(Alignment.bottomCenter);
     }
   }
 
-  // AIDEV-NOTE: Validates if position is reasonable (basic bounds checking)
+  // AIDEV-NOTE: Validates position using actual screen dimensions from native APIs
   Future<bool> _isPositionValid(Offset position) async {
     try {
-      // Basic validation: ensure position is not extreme values
-      // This handles most cases of invalid positions from resolution changes
-      const minPosition = -100.0; // Allow some off-screen positioning
-      const maxPosition = 5000.0; // Reasonable maximum for most setups
-      
-      return position.dx >= minPosition && 
-             position.dx <= maxPosition &&
-             position.dy >= minPosition && 
-             position.dy <= maxPosition;
+      Size screenBounds;
+
+      // AIDEV-NOTE: Get real screen dimensions from native API
+      if (Platform.isMacOS && _keyboardService != null) {
+        try {
+          // Access the method channel directly through the service
+          screenBounds =
+              await (_keyboardService as dynamic).getScreenDimensions();
+        } catch (e) {
+          screenBounds = const Size(1920, 1080);
+        }
+      } else {
+        // Fallback for other platforms or if service unavailable
+        screenBounds = const Size(1920, 1080);
+      }
+
+      final windowSize = await windowManager.getSize();
+
+      // AIDEV-NOTE: Allow window overflow as long as at least one edge is visible
+      // This means we can position windows partially off-screen for better UX
+      const minVisibleEdge = 20.0; // Minimum pixels that must remain visible
+
+      // Check if at least some part of the window would be visible on screen
+      final hasHorizontalOverlap = position.dx < screenBounds.width &&
+          position.dx + windowSize.width > 0;
+      final hasVerticalOverlap = position.dy < screenBounds.height &&
+          position.dy + windowSize.height > 0;
+
+      // Ensure at least minVisibleEdge pixels are visible on each axis
+      final hasMinVisibleHorizontal =
+          position.dx + minVisibleEdge < screenBounds.width &&
+              position.dx + windowSize.width - minVisibleEdge > 0;
+      final hasMinVisibleVertical =
+          position.dy + minVisibleEdge < screenBounds.height &&
+              position.dy + windowSize.height - minVisibleEdge > 0;
+
+      return hasHorizontalOverlap &&
+          hasVerticalOverlap &&
+          hasMinVisibleHorizontal &&
+          hasMinVisibleVertical;
     } catch (e) {
-      // If validation fails, assume position is invalid for safety
-      return false;
+      // If validation fails, assume position is valid for safety
+      return true;
     }
   }
 
   Future<void> _saveAllPreferences() async {
     // AIDEV-NOTE: Get current window position before saving preferences
     final currentPosition = await windowManager.getPosition();
-    
+
     final prefs = {
       // General settings
       'launchAtStartup': _launchAtStartup,
@@ -467,6 +558,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       'customFontEnabled': _customFontEnabled,
       'use6ColLayout': _use6ColLayout,
       'kanataEnabled': _kanataEnabled,
+      'layerSwitchingMode': _layerSwitchingMode,
       'keyboardFollowsMouse': _keyboardFollowsMouse,
     };
 
@@ -497,10 +589,12 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   Future<void> _loadCustomShiftMappings() async {
     final configService = ConfigService();
-    final mappings = await configService.getCustomShiftMappings();
+    final shiftMappings = await configService.getCustomShiftMappings();
+    final actionMappings = await configService.getActionMappings();
     final config = await configService.getConfig();
     setState(() {
-      _customShiftMappings = mappings;
+      _customShiftMappings = shiftMappings;
+      _actionMappings = actionMappings;
       _userConfig = config;
     });
   }
@@ -535,7 +629,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   }
 
   Future<void> _loadUserLayout() async {
-    if (!_useUserLayout) return;
+    if (!_useUserLayout) {
+      return;
+    }
 
     final configService = ConfigService();
     final userLayout = await configService.getUserLayout();
@@ -546,8 +642,12 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         if (!_kanataEnabled) {
           _keyboardLayout = userLayout;
         }
+        _isLayoutInitialized = true; // Mark layout as ready for rendering
       });
-      _adjustWindowSize(); // Adjust window for new layout
+
+      // Update SmartVisibilityManager with default layout info
+      _smartVisibilityManager.setDefaultLayer(userLayout.name);
+      // AIDEV-NOTE: Don't adjust window size here - wait for all layers to load first
       _fadeIn();
     }
   }
@@ -560,7 +660,14 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
     setState(() {
       _userLayers = layers;
+      // AIDEV-NOTE: Invalidate cached widths when user layers change
+      _cachedMaxLayoutWidth = null;
+      _cachedMaxLeftHandWidth = null;
+      _cachedMaxRightHandWidth = null;
     });
+
+    // AIDEV-NOTE: Now that all layers are loaded, calculate final window size
+    _adjustWindowSize();
   }
 
   Future<void> _loadAltLayout() async {
@@ -614,88 +721,142 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   double _calculateRequiredHeight() {
     KeyboardLayout currentLayout = _getCurrentLayout();
-    
+
     // Use actual preference values for accurate calculation
     double keySize = _keySize;
     double keyPadding = _keyPadding;
-    
+
     // Calculate main keyboard rows height
-    int visibleRows = _showTopRow ? currentLayout.keys.length : currentLayout.keys.length - 1;
-    double mainRowsHeight = visibleRows * (keySize + keyPadding * 2) + (visibleRows - 1) * keyPadding;
-    
+    int visibleRows =
+        _showTopRow ? currentLayout.keys.length : currentLayout.keys.length - 1;
+    double mainRowsHeight = visibleRows * (keySize + keyPadding * 2) +
+        (visibleRows - 1) * keyPadding;
+
     // Calculate thumb cluster height if present
     double thumbClusterHeight = 0;
     if (currentLayout.thumbCluster != null) {
       // Find maximum rows in left or right thumb cluster
-      int maxThumbRows = math.max(
-        currentLayout.thumbCluster!.leftKeys.length,
-        currentLayout.thumbCluster!.rightKeys.length
-      );
-      thumbClusterHeight = maxThumbRows * (keySize + keyPadding * 2) + 
-                          (maxThumbRows - 1) * keyPadding + 
-                          keyPadding * 2; // Extra spacing between main and thumb
+      int maxThumbRows = math.max(currentLayout.thumbCluster!.leftKeys.length,
+          currentLayout.thumbCluster!.rightKeys.length);
+      thumbClusterHeight = maxThumbRows * (keySize + keyPadding * 2) +
+          (maxThumbRows - 1) * keyPadding +
+          keyPadding * 2; // Extra spacing between main and thumb
     }
-    
-    double totalHeight = mainRowsHeight + thumbClusterHeight + _baseWindowPadding * 2;
-    
+
+    double totalHeight =
+        mainRowsHeight + thumbClusterHeight + _baseWindowPadding * 2;
+
     return totalHeight;
+  }
+
+  // AIDEV-NOTE: Helper method to get maximum keys for a layout side (left=true, right=false)
+  // Considers both main rows AND thumb clusters to find the true maximum width
+  int _getMaxKeysForLayout(KeyboardLayout layout, bool isLeftSide) {
+    int maxMainKeys = 0;
+    int maxThumbKeys = 0;
+
+    if (isLeftSide && layout.leftHand != null) {
+      // Check main hand rows
+      for (var row in layout.leftHand!.rows) {
+        int nonNullKeys = row.where((key) => key != null).length;
+        if (nonNullKeys > maxMainKeys) maxMainKeys = nonNullKeys;
+      }
+      // Check thumb cluster rows separately
+      if (layout.thumbCluster != null) {
+        for (var row in layout.thumbCluster!.leftKeys) {
+          int nonNullKeys = row.where((key) => key != null).length;
+          if (nonNullKeys > maxThumbKeys) maxThumbKeys = nonNullKeys;
+        }
+      }
+    } else if (!isLeftSide && layout.rightHand != null) {
+      // Check main hand rows
+      for (var row in layout.rightHand!.rows) {
+        int nonNullKeys = row.where((key) => key != null).length;
+        if (nonNullKeys > maxMainKeys) maxMainKeys = nonNullKeys;
+      }
+      // Check thumb cluster rows separately
+      if (layout.thumbCluster != null) {
+        for (var row in layout.thumbCluster!.rightKeys) {
+          int nonNullKeys = row.where((key) => key != null).length;
+          if (nonNullKeys > maxThumbKeys) maxThumbKeys = nonNullKeys;
+        }
+      }
+    }
+
+    // AIDEV-NOTE: Return the maximum of main keys or thumb keys to ensure proper width
+    return math.max(maxMainKeys, maxThumbKeys);
   }
 
   double _calculateRequiredWidth() {
     KeyboardLayout currentLayout = _getCurrentLayout();
     double keySize = _keySize;
     double keyPadding = _keyPadding;
-    
+
     // For split matrix layouts, calculate based on left+right hand + gap
     if (currentLayout.leftHand != null && currentLayout.rightHand != null) {
-      // Find the maximum keys in any row for left and right hands
-      int maxLeftKeys = 0;
-      int maxRightKeys = 0;
-      
-      for (var row in currentLayout.leftHand!.rows) {
-        // Count non-null keys only
-        int nonNullKeys = row.where((key) => key != null).length;
-        if (nonNullKeys > maxLeftKeys) maxLeftKeys = nonNullKeys;
-      }
-      for (var row in currentLayout.rightHand!.rows) {
-        // Count non-null keys only
-        int nonNullKeys = row.where((key) => key != null).length;
-        if (nonNullKeys > maxRightKeys) maxRightKeys = nonNullKeys;
-      }
-      
-      // Add thumb cluster width if present
-      if (currentLayout.thumbCluster != null) {
-        for (var row in currentLayout.thumbCluster!.leftKeys) {
-          int nonNullKeys = row.where((key) => key != null).length;
-          if (nonNullKeys > maxLeftKeys) maxLeftKeys = nonNullKeys;
+      // AIDEV-NOTE: Use cached maximum width to prevent window jumping on layer switches
+      if (_cachedMaxLayoutWidth == null) {
+        double maxTotalLayoutWidth = 0.0;
+
+        // Create list of all layouts to check (all user layers only)
+        List<KeyboardLayout> allLayouts = _userLayers
+            .where((layer) => layer.leftHand != null && layer.rightHand != null)
+            .toList();
+
+        // Calculate required width for each layout and find maximum
+        double maxLeftHandWidth = 0.0;
+        double maxRightHandWidth = 0.0;
+
+        for (final layout in allLayouts) {
+          double layoutWidth =
+              _calculateSplitLayoutWidth(layout, keySize, keyPadding);
+          if (layoutWidth > maxTotalLayoutWidth) {
+            maxTotalLayoutWidth = layoutWidth;
+          }
+
+          // Calculate individual hand widths for consistent positioning
+          int maxLeftKeys = _getMaxKeysForLayout(layout, true);
+          int maxRightKeys = _getMaxKeysForLayout(layout, false);
+
+          double leftWidth = maxLeftKeys * (keySize + keyPadding * 2) +
+              (maxLeftKeys - 1) * keyPadding;
+          double rightWidth = maxRightKeys * (keySize + keyPadding * 2) +
+              (maxRightKeys - 1) * keyPadding;
+
+          if (leftWidth > maxLeftHandWidth) maxLeftHandWidth = leftWidth;
+          if (rightWidth > maxRightHandWidth) maxRightHandWidth = rightWidth;
         }
-        for (var row in currentLayout.thumbCluster!.rightKeys) {
-          int nonNullKeys = row.where((key) => key != null).length;
-          if (nonNullKeys > maxRightKeys) maxRightKeys = nonNullKeys;
-        }
+
+        _cachedMaxLayoutWidth = maxTotalLayoutWidth;
+        _cachedMaxLeftHandWidth = maxLeftHandWidth;
+        _cachedMaxRightHandWidth = maxRightHandWidth;
       }
-      
-      // Calculate total width: left hand + gap + right hand + padding
-      double leftWidth = maxLeftKeys * (keySize + keyPadding * 2) + (maxLeftKeys - 1) * keyPadding;
-      double rightWidth = maxRightKeys * (keySize + keyPadding * 2) + (maxRightKeys - 1) * keyPadding;
-      double gap = _splitWidth;
-      
-      // AIDEV-NOTE: Add 20px safety margin to prevent Row overflow
-      return leftWidth + gap + rightWidth + _baseWindowPadding * 2 + 20;
+
+      // Add fixed elements that don't vary per layout
+      double debugModeWidth = _debugModeEnabled ? 76.0 : 0.0;
+      double layerSwitchingWidth = 320.0;
+      double finalWidth = _cachedMaxLayoutWidth! +
+          _baseWindowPadding * 2 +
+          20 +
+          debugModeWidth +
+          layerSwitchingWidth;
+
+      return finalWidth;
     } else {
       // For regular layouts, find the longest row
       int maxKeys = 0;
       int startRow = _showTopRow ? 0 : 1;
-      
+
       for (int i = startRow; i < currentLayout.keys.length; i++) {
         if (currentLayout.keys[i].length > maxKeys) {
           maxKeys = currentLayout.keys[i].length;
         }
       }
-      
+
       // Account for space bar width if present
-      double totalWidth = maxKeys * (keySize + keyPadding * 2) + (maxKeys - 1) * keyPadding;
-      
+      double totalWidth =
+          maxKeys * (keySize + keyPadding * 2) + (maxKeys - 1) * keyPadding;
+
       // Check if any row has space key and adjust
       for (int i = startRow; i < currentLayout.keys.length; i++) {
         for (String? key in currentLayout.keys[i]) {
@@ -706,39 +867,79 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           }
         }
       }
-      
-      return totalWidth + _baseWindowPadding * 2 + 20;
+
+      double finalWidth = totalWidth + _baseWindowPadding * 2 + 20;
+
+      return finalWidth;
     }
+  }
+
+  // AIDEV-NOTE: Calculate exact width for a specific split layout including both main and thumb areas
+  double _calculateSplitLayoutWidth(
+      KeyboardLayout layout, double keySize, double keyPadding) {
+    int maxLeftKeys = _getMaxKeysForLayout(layout, true);
+    int maxRightKeys = _getMaxKeysForLayout(layout, false);
+
+    double leftWidth = maxLeftKeys * (keySize + keyPadding * 2) +
+        (maxLeftKeys - 1) * keyPadding;
+    double rightWidth = maxRightKeys * (keySize + keyPadding * 2) +
+        (maxRightKeys - 1) * keyPadding;
+    double gap = _splitWidth;
+
+    double totalLayoutWidth = leftWidth + gap + rightWidth;
+
+    return totalLayoutWidth;
   }
 
   Future<void> _adjustWindowSize() async {
     _fadeIn();
-    
+
     // Calculate precise dimensions based on layout content
     double height = _calculateRequiredHeight();
     double width = _calculateRequiredWidth();
-    
+
+    // AIDEV-NOTE: setSize may move window, so preserve position
+    final positionBefore = await windowManager.getPosition();
     await windowManager.setSize(Size(width, height));
-    
-    // AIDEV-NOTE: Only reset to bottomCenter if no saved position exists
-    final savedPosition = await _prefsService.getWindowPosition();
-    if (savedPosition == null) {
-      await windowManager.setAlignment(Alignment.bottomCenter);
+
+    // AIDEV-NOTE: Restore position if setSize moved it
+    final positionAfter = await windowManager.getPosition();
+    if (positionBefore != positionAfter) {
+      await _setProgrammaticPosition(positionBefore);
     }
+
+    // AIDEV-NOTE: Don't reset position here - it's handled in _restoreWindowPosition()
   }
 
   void _fadeOut() {
     if (!_isWindowVisible) return;
+    if (kDebugMode && _debugModeEnabled) {
+      debugPrint('👁️ Smart Visibility: FADE OUT - hiding window');
+    }
     setState(() {
       _lastOpacity = _opacity;
       _opacity = 0.0;
       _isWindowVisible = false;
+      // AIDEV-NOTE: Exit moving mode when keyboard gets hidden
+      if (!_ignoreMouseEvents) {
+        _ignoreMouseEvents = true;
+        windowManager.setIgnoreMouseEvents(_ignoreMouseEvents);
+      }
     });
   }
 
   void _fadeIn() {
-    if (_forceHide) return;
+    if (_forceHide) {
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint('❌ Smart Visibility: FADE IN blocked - force hide active');
+      }
+      return;
+    }
     if (!_isWindowVisible) {
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint(
+            '👁️ Smart Visibility: FADE IN - showing window for ${_keyboardLayout.name}');
+      }
       setState(() {
         _isWindowVisible = true;
         _opacity = _lastOpacity;
@@ -755,9 +956,11 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     } else {
       // Fallback to isolate approach for other platforms
       final receivePort = ReceivePort();
-      Isolate.spawn(setHook, receivePort.sendPort).then((_) {}).catchError((error) {
+      Isolate.spawn(setHook, receivePort.sendPort)
+          .then((_) {})
+          .catchError((error) {
         if (kDebugMode) {
-          print('Error spawning Isolate: $error');
+          debugPrint('Error spawning Isolate: $error');
         }
       });
       receivePort.listen(_handleKeyEvent);
@@ -766,43 +969,173 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   void _setupMacOSKeyboardMonitoring() async {
     _keyboardService = KeyboardService.create();
-    
+
     // Check permissions first
     final hasPermissions = await _keyboardService!.checkPermissions();
     if (!hasPermissions) {
-      print("ERROR: macOS keyboard monitoring requires both Accessibility and Input Monitoring permissions.");
-      print("Please enable them in System Preferences > Security & Privacy > Privacy");
-      print("1. Go to System Preferences > Security & Privacy > Privacy > Accessibility");
-      print("2. Add your IDE (IntelliJ/VS Code/Terminal) and enable it");
-      print("3. Also add to Input Monitoring if on macOS 10.15+");
-      print("4. Restart the app after granting permissions");
+      debugPrint(
+          "ERROR: macOS keyboard monitoring requires both Accessibility and Input Monitoring permissions.");
+      debugPrint(
+          "Please enable them in System Preferences > Security & Privacy > Privacy");
+      debugPrint(
+          "1. Go to System Preferences > Security & Privacy > Privacy > Accessibility");
+      debugPrint("2. Add your IDE (IntelliJ/VS Code/Terminal) and enable it");
+      debugPrint("3. Also add to Input Monitoring if on macOS 10.15+");
+      debugPrint("4. Restart the app after granting permissions");
       return; // Don't crash, just return
     }
-    
+
+    // Extract trigger keys from config and send to native layer
+    final triggerKeys = <String>[];
+
+    for (final layout in _userLayers) {
+      final trigger = layout.trigger;
+      if (trigger != null && trigger.isNotEmpty) {
+        triggerKeys.add(trigger);
+      }
+    }
+
+    await _keyboardService!.updateTriggerKeys(triggerKeys);
+
     // Start monitoring using the platform channel
     await _keyboardService!.startMonitoring((List<dynamic> message) {
-      _handleKeyEvent(message);
+      final shouldConsumeEvent = _handleKeyEvent(message);
+      return shouldConsumeEvent;
     });
   }
 
-  void _handleKeyEvent(dynamic message) {
-    if (message is! List) return;
+  // AIDEV-NOTE: Parse trigger string with support for modifier aliases
+  Map<String, dynamic> _parseTrigger(String trigger) {
+    final parts = trigger.split('+');
+    final key = parts.last;
+    final modifierStrings =
+        parts.sublist(0, parts.length - 1).map((m) => m.toLowerCase()).toSet();
+
+    // AIDEV-NOTE: Expand modifier aliases
+    Set<String> modifiers = Set.from(modifierStrings);
+    if (modifiers.contains('meh')) {
+      modifiers.remove('meh');
+      modifiers.addAll(['ctrl', 'alt', 'shift']);
+    }
+    if (modifiers.contains('hyper')) {
+      modifiers.remove('hyper');
+      modifiers.addAll(['ctrl', 'alt', 'shift', 'cmd']);
+    }
+
+    return {
+      'key': key,
+      'shift': modifiers.contains('shift'),
+      'ctrl': modifiers.contains('ctrl'),
+      'alt': modifiers.contains('alt'),
+      'cmd': modifiers.contains('cmd'),
+      'lshift': modifiers.contains('lshift'),
+      'rshift': modifiers.contains('rshift'),
+      'lctrl': modifiers.contains('lctrl'),
+      'rctrl': modifiers.contains('rctrl'),
+      'lalt': modifiers.contains('lalt'),
+      'ralt': modifiers.contains('ralt'),
+      'lcmd': modifiers.contains('lcmd'),
+      'rcmd': modifiers.contains('rcmd'),
+    };
+  }
+
+  // AIDEV-NOTE: Check if current key event matches trigger configuration
+  bool _matchesTrigger(
+      String trigger,
+      String key,
+      bool isShiftDown,
+      bool isCtrlDown,
+      bool isAltDown,
+      bool isCmdDown,
+      bool isLShiftDown,
+      bool isRShiftDown,
+      bool isLCtrlDown,
+      bool isRCtrlDown,
+      bool isLAltDown,
+      bool isRAltDown,
+      bool isLCmdDown,
+      bool isRCmdDown) {
+    final parsed = _parseTrigger(trigger);
+
+    // AIDEV-NOTE: If specific left/right modifiers are specified, check them precisely
+    // Otherwise, check general modifiers (left OR right)
+    bool shiftMatches = parsed['lshift'] || parsed['rshift']
+        ? (parsed['lshift'] == isLShiftDown && parsed['rshift'] == isRShiftDown)
+        : parsed['shift'] == isShiftDown;
+
+    bool ctrlMatches = parsed['lctrl'] || parsed['rctrl']
+        ? (parsed['lctrl'] == isLCtrlDown && parsed['rctrl'] == isRCtrlDown)
+        : parsed['ctrl'] == isCtrlDown;
+
+    bool altMatches = parsed['lalt'] || parsed['ralt']
+        ? (parsed['lalt'] == isLAltDown && parsed['ralt'] == isRAltDown)
+        : parsed['alt'] == isAltDown;
+
+    bool cmdMatches = parsed['lcmd'] || parsed['rcmd']
+        ? (parsed['lcmd'] == isLCmdDown && parsed['rcmd'] == isRCmdDown)
+        : parsed['cmd'] == isCmdDown;
+
+    return parsed['key'] == key &&
+        shiftMatches &&
+        ctrlMatches &&
+        altMatches &&
+        cmdMatches;
+  }
+
+  bool _handleKeyEvent(dynamic message) {
+    if (message is! List) {
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint('🔑 Key Event: Invalid message format, returning false');
+      }
+      return false;
+    }
 
     String key;
     bool isPressed;
-    bool isShiftDown;
+    bool isShiftDown = false;
+    bool isCtrlDown = false;
+    bool isAltDown = false;
+    bool isCmdDown = false;
+    bool isLShiftDown = false;
+    bool isRShiftDown = false;
+    bool isLCtrlDown = false;
+    bool isRCtrlDown = false;
+    bool isLAltDown = false;
+    bool isRAltDown = false;
+    bool isLCmdDown = false;
+    bool isRCmdDown = false;
 
     if (message[0] is String) {
       // Handle string-based key events (macOS format)
       if (message[0] == 'session_unlock') {
         setState(() => _keyPressStates.clear());
-        return;
+        return false;
       }
-      
+
       final keyName = message[0] as String;
       isPressed = message[1] as bool;
-      isShiftDown = message[2] as bool;
-      
+
+      // AIDEV-NOTE: Handle both old format (bool) and new format (Map) for modifiers
+      if (message[2] is bool) {
+        // Old format: [keyName, isPressed, isShiftDown]
+        isShiftDown = message[2] as bool;
+      } else if (message[2] is Map) {
+        // New format: [keyName, isPressed, {shift: bool, ctrl: bool, alt: bool, cmd: bool, lshift: bool, ...}]
+        final modifiers = Map<String, dynamic>.from(message[2] as Map);
+        isShiftDown = modifiers['shift'] ?? false;
+        isCtrlDown = modifiers['ctrl'] ?? false;
+        isAltDown = modifiers['alt'] ?? false;
+        isCmdDown = modifiers['cmd'] ?? false;
+        isLShiftDown = modifiers['lshift'] ?? false;
+        isRShiftDown = modifiers['rshift'] ?? false;
+        isLCtrlDown = modifiers['lctrl'] ?? false;
+        isRCtrlDown = modifiers['rctrl'] ?? false;
+        isLAltDown = modifiers['lalt'] ?? false;
+        isRAltDown = modifiers['ralt'] ?? false;
+        isLCmdDown = modifiers['lcmd'] ?? false;
+        isRCmdDown = modifiers['rcmd'] ?? false;
+      }
+
       // Map string key names to layout keys
       key = getKeyFromStringKeyShift(keyName, isShiftDown);
     } else if (message[0] is int) {
@@ -812,16 +1145,14 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       isShiftDown = message[2] as bool;
       key = getKeyFromKeyCodeShift(keyCode, isShiftDown);
     } else {
-      return; // Invalid message format
+      return false; // Invalid message format
     }
 
-    // Key event processed: $key pressed: $isPressed shift: $isShiftDown
-    
     setState(() {
       // For macOS string events, track physical key to visual key mapping
       if (message[0] is String) {
         final keyName = message[0] as String;
-        
+
         if (isPressed) {
           // On press: track which visual key this physical key maps to
           _physicalKeyToVisualKey[keyName] = key;
@@ -834,61 +1165,324 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
             _physicalKeyToVisualKey.remove(keyName);
           }
         }
-        
       } else {
         // For Windows integer events, just track the mapped key
         _keyPressStates[key] = isPressed;
       }
     });
-    
-    if (_forceHide) return;
-    if (_autoHideEnabled && !_isWindowVisible && isPressed) {
-      _fadeIn();
-    } else {
-      _resetAutoHideTimer();
+
+    // AIDEV-NOTE: Handle reverse action mapping - when shortcut is pressed, highlight semantic action keys
+    _handleReverseActionMapping(
+        key, isPressed, isShiftDown, isCtrlDown, isAltDown, isCmdDown);
+
+    // AIDEV-NOTE: Fast check if key+modifiers match any trigger before expensive processing
+    // AIDEV-NOTE: We need to consume BOTH press AND release events for trigger keys to prevent beeps
+    final matchesTriggerNow = _useUserLayout &&
+        _advancedSettingsEnabled &&
+        _userLayers.any((l) =>
+            l.trigger != null &&
+            _matchesTrigger(
+                l.trigger!,
+                key,
+                isShiftDown,
+                isCtrlDown,
+                isAltDown,
+                isCmdDown,
+                isLShiftDown,
+                isRShiftDown,
+                isLCtrlDown,
+                isRCtrlDown,
+                isLAltDown,
+                isRAltDown,
+                isLCmdDown,
+                isRCmdDown));
+
+    // AIDEV-NOTE: Find the matching trigger combination if any
+    String? matchingTrigger;
+    if (matchesTriggerNow) {
+      final matchingLayer = _userLayers.firstWhere((l) =>
+          l.trigger != null &&
+          _matchesTrigger(
+              l.trigger!,
+              key,
+              isShiftDown,
+              isCtrlDown,
+              isAltDown,
+              isCmdDown,
+              isLShiftDown,
+              isRShiftDown,
+              isLCtrlDown,
+              isRCtrlDown,
+              isLAltDown,
+              isRAltDown,
+              isLCmdDown,
+              isRCmdDown));
+      matchingTrigger = matchingLayer.trigger;
     }
 
-    if (_useUserLayout && _advancedSettingsEnabled) {
-      final activeLayer = _userLayers.where((l) => l.trigger == key);
+    // AIDEV-NOTE: Check if this key is part of any pressed trigger combination
+    bool wasPressedAsTrigger = false;
+    String? triggerToRemove;
+    for (String trigger in _pressedTriggerCombinations) {
+      final parsed = _parseTrigger(trigger);
+      if (parsed['key'] == key) {
+        wasPressedAsTrigger = true;
+        triggerToRemove = trigger;
+        break;
+      }
+    }
+
+    // AIDEV-NOTE: Track complete trigger combinations on press, remove on release
+    if (isPressed && matchingTrigger != null) {
+      _pressedTriggerCombinations.add(matchingTrigger);
+    } else if (!isPressed && triggerToRemove != null) {
+      _pressedTriggerCombinations.remove(triggerToRemove);
+    }
+
+    // AIDEV-NOTE: Consider it a trigger key if it matches now OR was pressed as part of a trigger
+    final isTriggerKey = matchesTriggerNow || wasPressedAsTrigger;
+
+    if (isTriggerKey) {
+      // AIDEV-NOTE: Process triggers even when _forceHide is true (allows triggers to show keyboard)
+      final activeLayer = _userLayers.where((l) =>
+          l.trigger != null &&
+          _matchesTrigger(
+              l.trigger!,
+              key,
+              isShiftDown,
+              isCtrlDown,
+              isAltDown,
+              isCmdDown,
+              isLShiftDown,
+              isRShiftDown,
+              isLCtrlDown,
+              isRCtrlDown,
+              isLAltDown,
+              isRAltDown,
+              isLCmdDown,
+              isRCmdDown));
+
+      // AIDEV-NOTE: First check if this is a trigger key RELEASE that should be consumed
+      if (!isPressed) {
+        // AIDEV-NOTE: For trigger key releases, we always consume to prevent system beep
+        return true;
+      }
+
       for (final layout in activeLayer) {
         if (layout.type == 'toggle' && isPressed) {
+          if (kDebugMode && _debugModeEnabled) {
+            debugPrint(
+                '🔄 Smart Visibility: Toggle layer ${layout.name} pressed (current: ${_keyboardLayout.name}, visible: $_isWindowVisible, forceHide: $_forceHide)');
+          }
           setState(() {
-            if (_keyboardLayout.name != layout.name) {
+            // AIDEV-NOTE: Smart toggle behavior with delayed showing
+            if (!_isWindowVisible) {
+              // AIDEV-NOTE: If we're already in this layer but hidden, check if it should toggle OFF or show
+              if (_keyboardLayout.name == layout.name && _isInToggledLayer) {
+                // AIDEV-NOTE: Only toggle OFF if we were actually in a toggled state
+                if (kDebugMode && _debugModeEnabled) {
+                  debugPrint(
+                      '👋 Smart Visibility: Toggle OFF ${layout.name} (was hidden) - canceling pending timers');
+                }
+                // AIDEV-NOTE: Return to default layout and cancel pending timers
+                _smartVisibilityManager
+                    .cancelAllTimers(); // Cancel BEFORE changing layout
+                if (_defaultUserLayout != null) {
+                  _keyboardLayout = _defaultUserLayout!;
+                }
+                _isInToggledLayer = false; // No longer in toggled layer state
+                _forceHide = false;
+                return;
+              }
+
+              if (kDebugMode && _debugModeEnabled) {
+                debugPrint(
+                    '📱 Smart Visibility: Window hidden, switching to ${layout.name} with delay');
+              }
+              // AIDEV-NOTE: Cancel any existing timers before layer change
+              _smartVisibilityManager.cancelAllTimers();
               _keyboardLayout = layout;
-            } else if (_defaultUserLayout != null) {
-              _keyboardLayout = _defaultUserLayout!;
+              _isInToggledLayer = true; // Mark as in toggled layer state
+              _forceHide = false;
+
+              // Update SmartVisibilityManager state and start inactivity timer
+              _smartVisibilityManager.updateLayerState(
+                layerName: layout.name,
+                isInToggledLayer: true,
+              );
+              _smartVisibilityManager.resetInactivityTimer(
+                  layout.name, _conditionalFadeIn,
+                  pressedKey: key);
+            } else if (_keyboardLayout.name == layout.name) {
+              // AIDEV-NOTE: Special handling for default layout vs regular layers
+              bool isDefaultLayout = _defaultUserLayout != null &&
+                  layout.name == _defaultUserLayout!.name;
+
+              if (isDefaultLayout) {
+                // AIDEV-NOTE: Default layout should just hide, not switch to another layout
+                if (kDebugMode && _debugModeEnabled) {
+                  debugPrint(
+                      '👋 Smart Visibility: Toggle OFF ${layout.name} (DEFAULT) - hiding only');
+                }
+                _isInToggledLayer = false;
+                _forceHide = true;
+                _fadeOut();
+                _smartVisibilityManager.cancelAllTimers();
+              } else {
+                // AIDEV-NOTE: Regular layer toggles off and returns to default
+                if (kDebugMode && _debugModeEnabled) {
+                  debugPrint(
+                      '👋 Smart Visibility: Toggle OFF ${layout.name} - hiding and returning to default');
+                }
+                // AIDEV-NOTE: Don't change layout before hiding to prevent visual flash
+                _isInToggledLayer = false;
+                _forceHide = true;
+                _fadeOut();
+                _smartVisibilityManager.cancelAllTimers();
+
+                // AIDEV-NOTE: Schedule layout change after fade animation completes
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  if (_forceHide && _defaultUserLayout != null) {
+                    setState(() {
+                      _keyboardLayout = _defaultUserLayout!;
+                    });
+                  }
+                });
+              }
+            } else {
+              // AIDEV-NOTE: If different layer, switch to it with smart delay behavior
+              if (kDebugMode && _debugModeEnabled) {
+                debugPrint(
+                    '🔄 Smart Visibility: Switching from ${_keyboardLayout.name} to ${layout.name} - hiding and using delay');
+              }
+              // AIDEV-NOTE: Cancel any existing timers before layer change
+              _smartVisibilityManager.cancelAllTimers();
+              _keyboardLayout = layout;
+              _isInToggledLayer = true; // Mark as in toggled layer state
+              _forceHide = false;
+
+              // AIDEV-NOTE: Always use smart delay system when switching TO a layer
+              _fadeOut(); // Hide current layer
+              // Update SmartVisibilityManager state and start inactivity timer
+              _smartVisibilityManager.updateLayerState(
+                layerName: layout.name,
+                isInToggledLayer: true,
+              );
+              _smartVisibilityManager.resetInactivityTimer(
+                  layout.name, _conditionalFadeIn,
+                  pressedKey: key); // Start delay for new layer
             }
           });
+
+          // AIDEV-NOTE: Consume trigger key events to prevent system beep
+          return true;
         } else if (layout.type == 'held') {
           if (isPressed && !_activeTriggers.contains(key)) {
+            if (kDebugMode && _debugModeEnabled) {
+              debugPrint(
+                  '🔄 Smart Visibility: Held layer ${layout.name} pressed - showing immediately');
+            }
             setState(() {
               _keyboardLayout = layout;
               _activeTriggers.add(key);
+              _isInToggledLayer = true; // Mark as in toggled layer state
+              // AIDEV-NOTE: Held layers show immediately when triggered
+              if (!_isWindowVisible && !_forceHide) {
+                _fadeIn();
+              }
             });
+            _smartVisibilityManager.cancelAllTimers();
+            // AIDEV-NOTE: Consume held trigger press events
+            return true;
           } else if (!isPressed && _activeTriggers.contains(key)) {
+            if (kDebugMode && _debugModeEnabled) {
+              debugPrint(
+                  '🔄 Smart Visibility: Held layer ${layout.name} released, returning to default');
+            }
             setState(() {
               if (_defaultUserLayout != null) {
                 _keyboardLayout = _defaultUserLayout!;
               }
               _activeTriggers.remove(key);
+              _isInToggledLayer = false; // No longer in toggled layer state
             });
+            // AIDEV-NOTE: Cancel any pending show timers when layer is released
+            _smartVisibilityManager.cancelAllTimers();
+            // AIDEV-NOTE: Consume held trigger release events
+            return true;
           }
         }
       }
     }
+
+    // AIDEV-NOTE: Early return for non-trigger keys when force hidden (optimization)
+    if (_forceHide) return false;
+
+    // AIDEV-NOTE: Handle non-trigger keypresses for smart visibility and auto-hide
+    if (isPressed) {
+      // AIDEV-NOTE: Only reset inactivity timer if we're actually in a toggled layer
+      if (_isInToggledLayer && _useUserLayout && _advancedSettingsEnabled) {
+        if (kDebugMode && _debugModeEnabled) {
+          debugPrint(
+              '⌨️ Smart Visibility: Regular keypress "$key" - resetting inactivity timer (in toggled layer)');
+        }
+        _smartVisibilityManager.updateLayerState(
+          layerName: _keyboardLayout.name,
+          isInToggledLayer: _isInToggledLayer,
+        );
+        _smartVisibilityManager.resetInactivityTimer(
+            _keyboardLayout.name, _conditionalFadeIn,
+            pressedKey: key);
+      } else if (kDebugMode &&
+          _debugModeEnabled &&
+          _useUserLayout &&
+          _advancedSettingsEnabled) {
+        debugPrint(
+            '⌨️ Smart Visibility: Regular keypress "$key" - NOT in toggled layer, skipping timer');
+      }
+
+      // Traditional auto-hide behavior (show on any keypress when auto-hide enabled)
+      if (_autoHideEnabled && !_isWindowVisible) {
+        if (kDebugMode && _debugModeEnabled) {
+          debugPrint(
+              '👁️ Smart Visibility: Auto-hide showing window on keypress');
+        }
+        _fadeIn();
+      }
+    }
+
+    // Always reset auto-hide timer on any keypress
+    _resetAutoHideTimer();
+
+    // AIDEV-NOTE: Return false for non-trigger keys (allow system to process them normally)
+    return false;
   }
 
   void _resetAutoHideTimer() {
     if (!_autoHideEnabled) return;
 
     _autoHideTimer?.cancel();
-    _autoHideTimer =
-        Timer(Duration(milliseconds: (_autoHideDuration * 1000).round()), _handleAutoHide);
+    _autoHideTimer = Timer(
+        Duration(milliseconds: (_autoHideDuration * 1000).round()),
+        _handleAutoHide);
   }
 
   void _handleAutoHide() {
     if (_autoHideEnabled && _isWindowVisible) {
       _fadeOut();
+    }
+  }
+
+  // AIDEV-NOTE: Conditional fade in that uses SmartVisibilityManager conditions
+  void _conditionalFadeIn() {
+    if (_smartVisibilityManager.shouldShowOnInactivity(
+      useUserLayouts: _useUserLayout,
+      advancedSettingsEnabled: _advancedSettingsEnabled,
+      forceHidden: _forceHide,
+      windowVisible: _isWindowVisible,
+      hasDefaultLayout: _defaultUserLayout != null,
+    )) {
+      _fadeIn();
     }
   }
 
@@ -904,11 +1498,15 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         }
       }
     });
-    _showOverlay(_autoHideEnabled ? 'Auto-hide Enabled' : 'Auto-hide Disabled',
-        _autoHideEnabled ? const Icon(LucideIcons.timerReset) : const Icon(LucideIcons.timerOff));
+    _showOverlay(
+        _autoHideEnabled ? 'Auto-hide Enabled' : 'Auto-hide Disabled',
+        _autoHideEnabled
+            ? const Icon(LucideIcons.timerReset)
+            : const Icon(LucideIcons.timerOff));
     DesktopMultiWindow.getAllSubWindowIds().then((windowIds) {
       for (final id in windowIds) {
-        DesktopMultiWindow.invokeMethod(id, 'updateAutoHideFromMainWindow', _autoHideEnabled);
+        DesktopMultiWindow.invokeMethod(
+            id, 'updateAutoHideFromMainWindow', _autoHideEnabled);
       }
     });
     _saveAllPreferences();
@@ -927,8 +1525,11 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         _lastOpacity = newLastOpacity;
       });
 
-      _showOverlay('Opacity: ${(_lastOpacity * 100).round()}%',
-          increase ? const Icon(LucideIcons.plusCircle) : const Icon(LucideIcons.minusCircle));
+      _showOverlay(
+          'Opacity: ${(_lastOpacity * 100).round()}%',
+          increase
+              ? const Icon(LucideIcons.plusCircle)
+              : const Icon(LucideIcons.minusCircle));
     }
 
     _opacityDebounceTimer?.cancel();
@@ -940,7 +1541,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         _saveAllPreferences();
         DesktopMultiWindow.getAllSubWindowIds().then((windowIds) {
           for (final id in windowIds) {
-            DesktopMultiWindow.invokeMethod(id, 'updateOpacityFromMainWindow', _opacity);
+            DesktopMultiWindow.invokeMethod(
+                id, 'updateOpacityFromMainWindow', _opacity);
           }
         });
       }
@@ -957,6 +1559,60 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     _overlayTimer = Timer(_overlayDuration, () {
       setState(() => _showStatusOverlay = false);
     });
+  }
+
+  // AIDEV-NOTE: Layer switching functionality for mouse-based layer selection
+  List<KeyboardLayout> _getAvailableLayers() {
+    List<KeyboardLayout> layers = [];
+
+    // AIDEV-NOTE: Add user custom layouts first to prioritize them in dropdown
+    if (_userLayers.isNotEmpty) {
+      layers.addAll(_userLayers);
+    }
+
+    // Add base layouts for layer switching, avoiding duplicates by name
+    for (final baseLayout in availableLayouts) {
+      if (!layers.any((layer) => layer.name == baseLayout.name)) {
+        layers.add(baseLayout);
+      }
+    }
+
+    return layers;
+  }
+
+  void _switchToLayer(KeyboardLayout newLayer) {
+    setState(() {
+      _keyboardLayout = newLayer;
+    });
+
+    // Show status overlay to indicate layer switch
+    _showOverlay('Switched to ${newLayer.name}',
+        const Icon(LucideIcons.layers, color: Colors.white));
+
+    // Adjust window size for new layout
+    _adjustWindowSize();
+  }
+
+  void _toggleLayerSwitchingMode() {
+    setState(() {
+      _layerSwitchingMode = !_layerSwitchingMode;
+      // AIDEV-NOTE: Enable mouse events when layer switching mode is active for dropdown interaction
+      if (_layerSwitchingMode && _ignoreMouseEvents) {
+        _ignoreMouseEvents = false;
+        windowManager.setIgnoreMouseEvents(_ignoreMouseEvents);
+      }
+    });
+
+    final message = _layerSwitchingMode
+        ? 'Layer switching enabled'
+        : 'Layer switching disabled';
+    final icon = _layerSwitchingMode
+        ? const Icon(LucideIcons.layers, color: Colors.white)
+        : const Icon(LucideIcons.keyboard, color: Colors.white);
+
+    _showOverlay(message, icon);
+    _saveAllPreferences();
+    _setupTray(); // Update menu to show new state
   }
 
   String _formatHotkey(HotKey hotkey, bool enabled) {
@@ -982,8 +1638,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   }
 
   Future<void> _setupTray() async {
-    final String iconPath =
-        Platform.isWindows ? 'assets/images/app_icon.ico' : 'assets/images/app_icon.png';
+    final String iconPath = Platform.isWindows
+        ? 'assets/images/app_icon.ico'
+        : 'assets/images/app_icon.png';
     await Future.wait([
       trayManager.setIcon(iconPath),
       trayManager.setToolTip('OverKeys'),
@@ -991,7 +1648,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     trayManager.setContextMenu(Menu(items: [
       MenuItem.checkbox(
         key: 'toggle_mouse_events',
-        label: 'Move\t${_formatHotkey(_toggleMoveHotKey, _enableToggleMoveHotKey)}',
+        label:
+            'Move\t${_formatHotkey(_toggleMoveHotKey, _enableToggleMoveHotKey)}',
         checked: !_ignoreMouseEvents,
         onClick: (menuItem) {
           setState(() {
@@ -1001,6 +1659,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
               _fadeIn();
               _showOverlay('Move disabled', const Icon(LucideIcons.lock));
             } else {
+              // AIDEV-NOTE: Force show keyboard when enabling move mode
+              _forceHide = false;
+              _fadeIn();
               _showOverlay('Move enabled', const Icon(LucideIcons.move));
             }
           });
@@ -1009,24 +1670,32 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       MenuItem.separator(),
       MenuItem.checkbox(
         key: 'toggle_auto_hide',
-        label: 'Auto Hide\t${_formatHotkey(_autoHideHotKey, _enableAutoHideHotKey)}',
+        label:
+            'Auto Hide\t${_formatHotkey(_autoHideHotKey, _enableAutoHideHotKey)}',
         checked: _autoHideEnabled,
         onClick: (menuItem) {
           _toggleAutoHide(!_autoHideEnabled);
         },
+      ),
+      MenuItem.checkbox(
+        key: 'toggle_layer_switching',
+        label:
+            'Layer Switching Mode\t${_formatHotkey(_layerSwitchingHotKey, _enableLayerSwitchingHotKey)}',
+        checked: _layerSwitchingMode,
       ),
       MenuItem.separator(),
       MenuItem(
           key: 'reset_position',
           label: 'Reset Position',
           onClick: (menuItem) {
-            windowManager.setAlignment(Alignment.bottomCenter);
+            _setProgrammaticAlignment(Alignment.bottomCenter);
             _showOverlay('Position reset', const Icon(LucideIcons.locateFixed));
           }),
       MenuItem.separator(),
       MenuItem(
         key: 'preferences',
-        label: 'Preferences\t${_formatHotkey(_preferencesHotKey, _enablePreferencesHotKey)}',
+        label:
+            'Preferences\t${_formatHotkey(_preferencesHotKey, _enablePreferencesHotKey)}',
         onClick: (menuItem) {
           _showPreferences();
         },
@@ -1034,7 +1703,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       MenuItem.separator(),
       MenuItem(
         key: 'toggle_visibility',
-        label: 'Hide/Show\t${_formatHotkey(_visibilityHotKey, _enableVisibilityHotKey)}',
+        label:
+            'Hide/Show\t${_formatHotkey(_visibilityHotKey, _enableVisibilityHotKey)}',
         onClick: (menuItem) {
           onTrayIconMouseDown();
         },
@@ -1095,6 +1765,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
               _fadeIn();
               _showOverlay('Move disabled', const Icon(LucideIcons.lock));
             } else {
+              // AIDEV-NOTE: Force show keyboard when enabling move mode
+              _forceHide = false;
+              _fadeIn();
               _showOverlay('Move enabled', const Icon(LucideIcons.move));
             }
           });
@@ -1106,7 +1779,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       await hotKeyManager.register(
         _preferencesHotKey,
         keyDownHandler: (hotKey) {
-          _showOverlay('Opening Preferences', const Icon(LucideIcons.appWindow));
+          _showOverlay(
+              'Opening Preferences', const Icon(LucideIcons.appWindow));
           _showPreferences();
         },
       );
@@ -1130,6 +1804,15 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       );
     }
 
+    if (_enableLayerSwitchingHotKey) {
+      await hotKeyManager.register(
+        _layerSwitchingHotKey,
+        keyDownHandler: (hotKey) {
+          _toggleLayerSwitchingMode();
+        },
+      );
+    }
+
     _setupTray();
   }
 
@@ -1139,7 +1822,12 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _showPreferences();
       return;
     }
-    
+
+    if (menuItem.key == 'toggle_layer_switching') {
+      _toggleLayerSwitchingMode();
+      return;
+    }
+
     if (menuItem.key == 'exit') {
       DesktopMultiWindow.getAllSubWindowIds().then((windowIds) async {
         for (final id in windowIds) {
@@ -1149,7 +1837,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         exit(0);
       }).catchError((error) {
         if (kDebugMode) {
-          print('Error closing windows: $error');
+          debugPrint('Error closing windows: $error');
         }
         windowManager.close();
         exit(0);
@@ -1162,8 +1850,11 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   @override
   void onTrayIconMouseDown() {
     _forceHide = !_forceHide;
-    _showOverlay(_forceHide ? 'Keyboard Hidden' : 'Keyboard Shown',
-        _forceHide ? const Icon(LucideIcons.eyeOff) : const Icon(LucideIcons.eye));
+    _showOverlay(
+        _forceHide ? 'Keyboard Hidden' : 'Keyboard Shown',
+        _forceHide
+            ? const Icon(LucideIcons.eyeOff)
+            : const Icon(LucideIcons.eye));
     if (_isWindowVisible) {
       _fadeOut();
     } else {
@@ -1185,10 +1876,30 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     windowManager.blur();
   }
 
+  bool _isProgrammaticMove = false;
+
+  // AIDEV-NOTE: Helper to set position programmatically without triggering save
+  Future<void> _setProgrammaticPosition(Offset position) async {
+    _isProgrammaticMove = true;
+    await windowManager.setPosition(position);
+    _isProgrammaticMove = false;
+  }
+
+  // AIDEV-NOTE: Helper to set alignment programmatically without triggering save
+  Future<void> _setProgrammaticAlignment(Alignment alignment) async {
+    _isProgrammaticMove = true;
+    await windowManager.setAlignment(alignment);
+    _isProgrammaticMove = false;
+  }
+
   @override
   void onWindowMoved() {
-    // AIDEV-NOTE: Save window position when user moves the window
-    if (kDebugMode) print('🔧 Window moved, saving position...');
+    // AIDEV-NOTE: Only save position for user moves after initialization
+    if (_isInitializing || _isProgrammaticMove) {
+      return;
+    }
+
+    // AIDEV-NOTE: This is a user-initiated move, save it
     _saveWindowPosition();
   }
 
@@ -1197,28 +1908,28 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       final position = await windowManager.getPosition();
       await _prefsService.setWindowPosition(position);
     } catch (e) {
-      // Ignore errors during position saving to avoid blocking window movement
+      // Ignore position save errors
     }
   }
 
   bool _preferencesLaunching = false;
   Process? _preferencesProcess;
-  
+
   Future<void> _showPreferences() async {
     try {
-      // Check if preferences process is already running  
+      // Check if preferences process is already running
       if (_preferencesProcess != null) {
         // Process exists, don't create another window
         return;
       }
-      
+
       // Check if we're already launching
       if (_preferencesLaunching) {
         return;
       }
-      
+
       _preferencesLaunching = true;
-      
+
       // Launch preferences as a separate process (original working approach)
       final process = await Process.start(
         Platform.resolvedExecutable,
@@ -1226,21 +1937,20 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         runInShell: false,
         environment: Platform.environment,
       );
-      
+
       // Track this process
       _preferencesProcess = process;
-      
+
       // Clean up when process exits
       process.exitCode.then((exitCode) {
         _preferencesProcess = null;
         _preferencesLaunching = false;
       });
-      
+
       _preferencesLaunching = false;
-      
     } catch (e) {
       if (kDebugMode) {
-        print('Error launching preferences: $e');
+        debugPrint('Error launching preferences: $e');
       }
       _preferencesLaunching = false;
     }
@@ -1268,14 +1978,37 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
             _opacity = opacity;
             _lastOpacity = opacity;
           });
+        case 'updateLayerShowDelay':
+          final layerShowDelay = call.arguments as double;
+          _smartVisibilityManager.updateDelays(
+              customLayerDelay: layerShowDelay);
+        case 'updateDefaultUserLayoutShowDelay':
+          final defaultUserLayoutShowDelay = call.arguments as double;
+          _smartVisibilityManager.updateDelays(
+              defaultLayerDelay: defaultUserLayoutShowDelay);
+        case 'updateQuickSuccessionWindow':
+          final quickSuccessionWindow = call.arguments as double;
+          // Need to recreate the SmartVisibilityManager with new quick succession window
+          _smartVisibilityManager.dispose();
+          _smartVisibilityManager = SmartVisibilityManager(
+            defaultLayerDelay: _smartVisibilityManager.defaultLayerDelay,
+            customLayerDelay: _smartVisibilityManager.customLayerDelay,
+            quickSuccessionWindow: quickSuccessionWindow,
+            debugEnabled: _smartVisibilityManager.debugEnabled,
+          );
+          if (_defaultUserLayout != null) {
+            _smartVisibilityManager.setDefaultLayer(_defaultUserLayout!.name);
+          }
         case 'updateLayout':
           final layoutName = call.arguments as String;
           setState(() {
-            if ((_kanataEnabled || _useUserLayout) && _advancedSettingsEnabled) {
-              _initialKeyboardLayout =
-                  availableLayouts.firstWhere((layout) => layout.name == layoutName);
+            if ((_kanataEnabled || _useUserLayout) &&
+                _advancedSettingsEnabled) {
+              _initialKeyboardLayout = availableLayouts
+                  .firstWhere((layout) => layout.name == layoutName);
             } else {
-              _keyboardLayout = availableLayouts.firstWhere((layout) => layout.name == layoutName);
+              _keyboardLayout = availableLayouts
+                  .firstWhere((layout) => layout.name == layoutName);
               _initialKeyboardLayout = _keyboardLayout;
             }
           });
@@ -1376,13 +2109,15 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           setState(() => _keyTextColor = Color(keyTextColor));
         case 'updateKeyTextColorNotPressed':
           final keyTextColorNotPressed = call.arguments as int;
-          setState(() => _keyTextColorNotPressed = Color(keyTextColorNotPressed));
+          setState(
+              () => _keyTextColorNotPressed = Color(keyTextColorNotPressed));
         case 'updateKeyBorderColorPressed':
           final keyBorderColorPressed = call.arguments as int;
           setState(() => _keyBorderColorPressed = Color(keyBorderColorPressed));
         case 'updateKeyBorderColorNotPressed':
           final keyBorderColorNotPressed = call.arguments as int;
-          setState(() => _keyBorderColorNotPressed = Color(keyBorderColorNotPressed));
+          setState(() =>
+              _keyBorderColorNotPressed = Color(keyBorderColorNotPressed));
 
         // Animations settings
         case 'updateAnimationEnabled':
@@ -1576,6 +2311,18 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
               _fontFamily = _initialFontFamily;
             }
           });
+        case 'updateDebugModeEnabled':
+          final debugModeEnabled = call.arguments as bool;
+          setState(() {
+            _debugModeEnabled = debugModeEnabled;
+          });
+          _adjustWindowSize(); // Recalculate window size for debug padding
+        case 'updateThumbDebugModeEnabled':
+          final thumbDebugModeEnabled = call.arguments as bool;
+          setState(() {
+            _thumbDebugModeEnabled = thumbDebugModeEnabled;
+          });
+          _adjustWindowSize(); // Recalculate window size for debug padding
         case 'updateUse6ColLayout':
           final use6ColLayout = call.arguments as bool;
           setState(() {
@@ -1604,7 +2351,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
             _keyboardFollowsMouse = keyboardFollowsMouse;
             if (keyboardFollowsMouse && _advancedSettingsEnabled) {
               _startMouseTracking();
-              windowManager.setAlignment(Alignment.bottomCenter);
             } else {
               _stopMouseTracking();
             }
@@ -1624,21 +2370,24 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'OverKeys',
-      theme: Platform.isMacOS ? ThemeData(
-          fontFamily: _fontFamily,
-          fontFamilyFallback: const ['GeistMono', 'Manrope', 'sans-serif'],
-          // AIDEV-NOTE: Enhanced transparency configuration for macOS
-          brightness: Brightness.light,
-          visualDensity: VisualDensity.adaptivePlatformDensity,
-          platform: TargetPlatform.macOS,
-          scaffoldBackgroundColor: Colors.transparent,
-          canvasColor: Colors.transparent,
-          cardColor: Colors.transparent,
-          dialogTheme: const DialogThemeData(backgroundColor: Colors.transparent)) : ThemeData(
-          fontFamily: _fontFamily,
-          fontFamilyFallback: const ['GeistMono', 'Manrope', 'sans-serif'],
-          visualDensity: VisualDensity.adaptivePlatformDensity,
-          platform: TargetPlatform.windows),
+      theme: Platform.isMacOS
+          ? ThemeData(
+              fontFamily: _fontFamily,
+              fontFamilyFallback: const ['GeistMono', 'Manrope', 'sans-serif'],
+              // AIDEV-NOTE: Enhanced transparency configuration for macOS
+              brightness: Brightness.light,
+              visualDensity: VisualDensity.adaptivePlatformDensity,
+              platform: TargetPlatform.macOS,
+              scaffoldBackgroundColor: Colors.transparent,
+              canvasColor: Colors.transparent,
+              cardColor: Colors.transparent,
+              dialogTheme:
+                  const DialogThemeData(backgroundColor: Colors.transparent))
+          : ThemeData(
+              fontFamily: _fontFamily,
+              fontFamilyFallback: const ['GeistMono', 'Manrope', 'sans-serif'],
+              visualDensity: VisualDensity.adaptivePlatformDensity,
+              platform: TargetPlatform.windows),
       home: Scaffold(
         backgroundColor: Colors.transparent,
         body: Stack(
@@ -1652,56 +2401,66 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
                 child: Container(
                   color: Colors.transparent,
                   child: Center(
-                    child: KeyboardScreen(
-                      layout: _keyboardLayout,
-                      keymapStyle: _keymapStyle,
-                      showTopRow: _showTopRow,
-                      showGraveKey: _showGraveKey,
-                      keySize: _keySize,
-                      keyBorderRadius: _keyBorderRadius,
-                      keyBorderThickness: _keyBorderThickness,
-                      keyPadding: _keyPadding,
-                      spaceWidth: _spaceWidth,
-                      splitWidth: _splitWidth,
-                      lastRowSplitWidth: _lastRowSplitWidth,
-                      keyShadowBlurRadius: _keyShadowBlurRadius,
-                      keyShadowOffsetX: _keyShadowOffsetX,
-                      keyShadowOffsetY: _keyShadowOffsetY,
-                      keyFontSize: _keyFontSize,
-                      spaceFontSize: _spaceFontSize,
-                      fontWeight: _fontWeight,
-                      markerOffset: _markerOffset,
-                      markerWidth: _markerWidth,
-                      markerHeight: _markerHeight,
-                      markerBorderRadius: _markerBorderRadius,
-                      keyColorPressed: _keyColorPressed,
-                      keyColorNotPressed: _keyColorNotPressed,
-                      markerColor: _markerColor,
-                      markerColorNotPressed: _markerColorNotPressed,
-                      keyTextColor: _keyTextColor,
-                      keyTextColorNotPressed: _keyTextColorNotPressed,
-                      keyBorderColorPressed: _keyBorderColorPressed,
-                      keyBorderColorNotPressed: _keyBorderColorNotPressed,
-                      animationEnabled: _animationEnabled,
-                      animationStyle: _animationStyle,
-                      animationDuration: _animationDuration,
-                      animationScale: _animationScale,
-                      learningModeEnabled: _learningModeEnabled,
-                      pinkyLeftColor: _pinkyLeftColor,
-                      ringLeftColor: _ringLeftColor,
-                      middleLeftColor: _middleLeftColor,
-                      indexLeftColor: _indexLeftColor,
-                      indexRightColor: _indexRightColor,
-                      middleRightColor: _middleRightColor,
-                      ringRightColor: _ringRightColor,
-                      pinkyRightColor: _pinkyRightColor,
-                      showAltLayout: _advancedSettingsEnabled && _showAltLayout,
-                      altLayout: _altLayout,
-                      use6ColLayout: _use6ColLayout,
-                      keyPressStates: _keyPressStates,
-                      customShiftMappings: _customShiftMappings,
-                      config: _userConfig,
-                    ),
+                    child: _isLayoutInitialized
+                        ? KeyboardScreen(
+                            layout: _keyboardLayout,
+                            keymapStyle: _keymapStyle,
+                            showTopRow: _showTopRow,
+                            showGraveKey: _showGraveKey,
+                            keySize: _keySize,
+                            keyBorderRadius: _keyBorderRadius,
+                            keyBorderThickness: _keyBorderThickness,
+                            keyPadding: _keyPadding,
+                            spaceWidth: _spaceWidth,
+                            splitWidth: _splitWidth,
+                            lastRowSplitWidth: _lastRowSplitWidth,
+                            keyShadowBlurRadius: _keyShadowBlurRadius,
+                            keyShadowOffsetX: _keyShadowOffsetX,
+                            keyShadowOffsetY: _keyShadowOffsetY,
+                            keyFontSize: _keyFontSize,
+                            spaceFontSize: _spaceFontSize,
+                            fontWeight: _fontWeight,
+                            markerOffset: _markerOffset,
+                            markerWidth: _markerWidth,
+                            markerHeight: _markerHeight,
+                            markerBorderRadius: _markerBorderRadius,
+                            keyColorPressed: _keyColorPressed,
+                            keyColorNotPressed: _keyColorNotPressed,
+                            markerColor: _markerColor,
+                            markerColorNotPressed: _markerColorNotPressed,
+                            keyTextColor: _keyTextColor,
+                            keyTextColorNotPressed: _keyTextColorNotPressed,
+                            keyBorderColorPressed: _keyBorderColorPressed,
+                            keyBorderColorNotPressed: _keyBorderColorNotPressed,
+                            animationEnabled: _animationEnabled,
+                            animationStyle: _animationStyle,
+                            animationDuration: _animationDuration,
+                            animationScale: _animationScale,
+                            learningModeEnabled: _learningModeEnabled,
+                            pinkyLeftColor: _pinkyLeftColor,
+                            ringLeftColor: _ringLeftColor,
+                            middleLeftColor: _middleLeftColor,
+                            indexLeftColor: _indexLeftColor,
+                            indexRightColor: _indexRightColor,
+                            middleRightColor: _middleRightColor,
+                            ringRightColor: _ringRightColor,
+                            pinkyRightColor: _pinkyRightColor,
+                            showAltLayout:
+                                _advancedSettingsEnabled && _showAltLayout,
+                            altLayout: _altLayout,
+                            use6ColLayout: _use6ColLayout,
+                            keyPressStates: _keyPressStates,
+                            customShiftMappings: _customShiftMappings,
+                            actionMappings: _actionMappings,
+                            config: _userConfig,
+                            debugMode: _debugModeEnabled,
+                            thumbDebugMode: _thumbDebugModeEnabled,
+                            maxLayoutWidth: _cachedMaxLayoutWidth,
+                            maxLeftHandWidth: _cachedMaxLeftHandWidth,
+                            maxRightHandWidth: _cachedMaxRightHandWidth,
+                          )
+                        : const SizedBox
+                            .shrink(), // Hide keyboard until layout is initialized
                   ),
                 ),
               ),
@@ -1715,10 +2474,160 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
               keySize: _keySize,
               keyBorderRadius: _keyBorderRadius,
             ),
+            LayerSelector(
+              availableLayers: _getAvailableLayers(),
+              currentLayer: _keyboardLayout,
+              onLayerChanged: _switchToLayer,
+              isVisible: _layerSwitchingMode && _isWindowVisible,
+              opacity: _opacity,
+              keyColorNotPressed: _keyColorNotPressed,
+              keyTextColorNotPressed: _keyTextColorNotPressed,
+              keyBorderColorNotPressed: _keyBorderColorNotPressed,
+              keyBorderRadius: _keyBorderRadius,
+              keyBorderThickness: _keyBorderThickness,
+            ),
           ],
         ),
       ),
       debugShowCheckedModeBanner: false,
     );
+  }
+
+  // AIDEV-NOTE: Track which semantic actions are currently active based on key combinations
+  final Set<String> _activeSemanticActions = <String>{};
+
+  // AIDEV-NOTE: Handle reverse action mapping - detect shortcuts and highlight semantic action keys
+  void _handleReverseActionMapping(String key, bool isPressed, bool isShiftDown,
+      bool isCtrlDown, bool isAltDown, bool isCmdDown) {
+    // Only process if we have action mappings loaded
+    final actionMappings = _actionMappings;
+    if (actionMappings == null || actionMappings.isEmpty) return;
+
+    // Build the key combination string in the same format as action mappings
+    final String keyCombination = _buildKeyCombination(
+        key, isShiftDown, isCtrlDown, isAltDown, isCmdDown);
+
+    // Find all semantic actions that match this key combination (exact match only)
+    final matchingActions = <String>[];
+    actionMappings.forEach((semanticAction, actionKeyCombination) {
+      if (_normalizeKeyCombination(actionKeyCombination) ==
+          _normalizeKeyCombination(keyCombination)) {
+        matchingActions.add(semanticAction);
+      }
+    });
+
+    // For release events, only clear actions that were previously set by the exact same combination
+    final partialMatchingActions = <String>[];
+    if (!isPressed) {
+      // Only clear actions that are currently active and match the releasing key
+      for (final activeAction in _activeSemanticActions.toList()) {
+        final actionCombination = actionMappings[activeAction];
+        if (actionCombination != null &&
+            _normalizeKeyCombination(actionCombination)
+                .contains(_normalizeKeyCombination(key))) {
+          partialMatchingActions.add(activeAction);
+        }
+      }
+    }
+
+    final allMatchingActions =
+        {...matchingActions, ...partialMatchingActions}.toList();
+
+    if (allMatchingActions.isNotEmpty) {
+      // Update active semantic actions tracking
+      setState(() {
+        for (final action in allMatchingActions) {
+          if (isPressed) {
+            _activeSemanticActions.add(action);
+          } else {
+            _activeSemanticActions.remove(action);
+          }
+        }
+      });
+
+      // Find all keys in the current layout that have these semantic labels
+      final currentLayout = _keyboardLayout;
+      final semanticKeys = <String>[];
+
+      // Search through all keys in the layout
+      for (final row in currentLayout.keys) {
+        for (final layoutKey in row) {
+          if (layoutKey != null && allMatchingActions.contains(layoutKey)) {
+            semanticKeys.add(layoutKey);
+          }
+        }
+      }
+
+      // Also check split matrix layouts (leftHand/rightHand)
+      if (currentLayout.leftHand != null) {
+        for (final row in currentLayout.leftHand!.rows) {
+          for (final layoutKey in row) {
+            if (layoutKey != null && allMatchingActions.contains(layoutKey)) {
+              semanticKeys.add(layoutKey);
+            }
+          }
+        }
+      }
+      if (currentLayout.rightHand != null) {
+        for (final row in currentLayout.rightHand!.rows) {
+          for (final layoutKey in row) {
+            if (layoutKey != null && allMatchingActions.contains(layoutKey)) {
+              semanticKeys.add(layoutKey);
+            }
+          }
+        }
+      }
+
+      // Also check thumb cluster
+      if (currentLayout.thumbCluster != null) {
+        // Check left thumb keys
+        for (final row in currentLayout.thumbCluster!.leftKeys) {
+          for (final layoutKey in row) {
+            if (layoutKey != null && allMatchingActions.contains(layoutKey)) {
+              semanticKeys.add(layoutKey);
+            }
+          }
+        }
+        // Check right thumb keys
+        for (final row in currentLayout.thumbCluster!.rightKeys) {
+          for (final layoutKey in row) {
+            if (layoutKey != null && allMatchingActions.contains(layoutKey)) {
+              semanticKeys.add(layoutKey);
+            }
+          }
+        }
+      }
+
+      // Update the key press states for all matching semantic keys
+      setState(() {
+        for (final semanticKey in semanticKeys) {
+          // Only highlight if the semantic action is currently active
+          final shouldBePressed = _activeSemanticActions.contains(semanticKey);
+          _keyPressStates[semanticKey] = shouldBePressed;
+        }
+      });
+    }
+  }
+
+  // AIDEV-NOTE: Build key combination string in action mappings format (cmd+c, cmd+shift+z, etc.)
+  String _buildKeyCombination(String key, bool isShiftDown, bool isCtrlDown,
+      bool isAltDown, bool isCmdDown) {
+    final parts = <String>[];
+
+    // Add modifiers in standard order: cmd, ctrl, alt, shift
+    if (isCmdDown) parts.add('cmd');
+    if (isCtrlDown) parts.add('ctrl');
+    if (isAltDown) parts.add('alt');
+    if (isShiftDown) parts.add('shift');
+
+    // Add the key (convert to lowercase to match action mappings format)
+    parts.add(key.toLowerCase());
+
+    return parts.join('+');
+  }
+
+  // AIDEV-NOTE: Normalize key combinations for comparison (handle variations in spacing, case, etc.)
+  String _normalizeKeyCombination(String combination) {
+    return combination.toLowerCase().replaceAll(' ', '').replaceAll('_', '');
   }
 }

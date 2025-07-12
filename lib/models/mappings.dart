@@ -66,7 +66,7 @@ class Mappings {
     // 'SFT': 'Shift',
     // 'SHFT': 'Shift',
     // 'SHIFT': 'Shift',
-    '⇧': 'LShift',
+    '⇧': 'LShift', // Map Unicode shift symbol to LShift (matches Swift output)
     'SFT': 'LShift',
     'SHFT': 'LShift',
     'SHIFT': 'LShift',
@@ -82,7 +82,8 @@ class Mappings {
     // '⎈': 'Control',
     // 'CTL': 'Control',
     // 'CTRL': 'Control',
-    '⌃': 'LControl',
+    '⌃':
+        'LControl', // Map Unicode control symbol to LControl (matches Swift output)
     '⎈': 'LControl',
     'CTL': 'LControl',
     'CTRL': 'LControl',
@@ -93,7 +94,7 @@ class Mappings {
     // '⌥': 'Alt',
     // '⎇': 'Alt',
     // 'ALT': 'Alt',
-    '⌥': 'LAlt',
+    '⌥': 'LAlt', // Map Unicode alt symbol to LAlt (matches Swift output)
     '⎇': 'LAlt',
     'ALT': 'LAlt',
     '‹⎇': 'LAlt',
@@ -106,33 +107,33 @@ class Mappings {
     '⎈›': 'RControl',
     'RCTL': 'RControl',
     'RCTRL': 'RControl',
-    '⌘': 'Win',
-    '⊞': 'Win',
-    '◆': 'Win',
-    '❖': 'Win',
+    '⌘': 'Cmd', // Map Unicode command symbol to Cmd (matches Swift output)
+    '⊞': 'WIN',
+    '◆': 'WIN',
+    '❖': 'WIN',
     'WIN': 'Win',
-    '⎀': 'Insert',
+    '⎀': 'INS',
     'INS': 'Insert',
     'INSERT': 'Insert',
-    '🔢₀': '0',
-    '🔢₁': '1',
-    '🔢₂': '2',
-    '🔢₃': '3',
-    '🔢₄': '4',
-    '🔢₅': '5',
-    '🔢₆': '6',
-    '🔢₇': '7',
-    '🔢₈': '8',
-    '🔢₉': '9',
-    '🔢⁄': '/',
-    '🔢₊': '+',
-    '🔢∗': '*',
-    '🔢₋': '-',
-    '🔢．': '.',
-    '⇭': 'NumLock',
-    'NLK': 'NumLock',
-    'NLCK': 'NumLock',
-    '⇳🔒': 'ScrollLock',
+    '🔢₀': 'NUM 0',
+    '🔢₁': 'NUM 1',
+    '🔢₂': 'NUM 2',
+    '🔢₃': 'NUM 3',
+    '🔢₄': 'NUM 4',
+    '🔢₅': 'NUM 5',
+    '🔢₆': 'NUM 6',
+    '🔢₇': 'NUM 7',
+    '🔢₈': 'NUM 8',
+    '🔢₉': 'NUM 9',
+    '🔢⁄': 'NUM /',
+    '🔢₊': 'NUM +',
+    '🔢∗': 'NUM *',
+    '🔢₋': 'NUM -',
+    '🔢．': 'NUM .',
+    '⇭': 'NUM LOCK',
+    'NLK': 'NUM LOCK',
+    'NLCK': 'NUM LOCK',
+    '⇳🔒': 'SCROLL LOCK',
     'SLCK': 'ScrollLock',
     'SCRLCK': 'ScrollLock',
     '‐': '-',
@@ -168,5 +169,22 @@ class Mappings {
     };
 
     return shiftedSymbols[symbol] ?? symbol;
+  }
+
+  // AIDEV-NOTE: Human-friendly names for ZMK keys and macros
+  static String getDisplayName(
+      String zmkKey, Map<String, String>? actionMappings) {
+    if (actionMappings != null && actionMappings.containsKey(zmkKey)) {
+      // Don't return the action, just use this as indication this is a semantic key
+      // The original zmkKey (like "Cut", "Copy") is already the display name we want
+      return zmkKey;
+    }
+
+    // Single character keys - return as uppercase
+    if (zmkKey.length == 1) {
+      return zmkKey.toUpperCase();
+    }
+
+    return zmkKey;
   }
 }

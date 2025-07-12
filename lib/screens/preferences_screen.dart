@@ -30,7 +30,8 @@ class PreferencesScreen extends StatefulWidget {
   State<PreferencesScreen> createState() => _PreferencesScreenState();
 }
 
-class _PreferencesScreenState extends State<PreferencesScreen> with WindowListener {
+class _PreferencesScreenState extends State<PreferencesScreen>
+    with WindowListener {
   final PreferencesService _prefsService = PreferencesService();
   late final FocusNode _keyboardFocusNode;
 
@@ -45,6 +46,9 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
   double _autoHideDuration = 2.0;
   double _opacity = 0.6;
   String _keyboardLayoutName = 'QWERTY';
+  double _layerShowDelay = 700.0; // 1 second default
+  double _defaultUserLayoutShowDelay = 300.0; // 0.5 second default
+  double _quickSuccessionWindow = 200.0; // 200ms default
 
   // Keyboard settings
   String _keymapStyle = 'Staggered';
@@ -138,6 +142,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
   bool _useUserLayout = false;
   bool _showAltLayout = false;
   bool _customFontEnabled = false;
+  bool _debugModeEnabled = false;
+  bool _thumbDebugModeEnabled = false;
   bool _use6ColLayout = false;
   bool _kanataEnabled = false;
   bool _keyboardFollowsMouse = false;
@@ -213,94 +219,102 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
 
       if (mounted) {
         setState(() {
-      // General settings
-      _launchAtStartup = prefs['launchAtStartup'];
-      _autoHideEnabled = prefs['autoHideEnabled'];
-      _autoHideDuration = prefs['autoHideDuration'];
-      _opacity = prefs['opacity'];
-      _keyboardLayoutName = prefs['keyboardLayoutName'];
+          // General settings
+          _launchAtStartup = prefs['launchAtStartup'];
+          _autoHideEnabled = prefs['autoHideEnabled'];
+          _autoHideDuration = prefs['autoHideDuration'];
+          _opacity = prefs['opacity'];
+          _keyboardLayoutName = prefs['keyboardLayoutName'];
+          _layerShowDelay = prefs['customLayerDelay'] ?? 1000.0;
+          _defaultUserLayoutShowDelay =
+              prefs['defaultUserLayoutShowDelay'] ?? 500.0;
+          _quickSuccessionWindow = prefs['quickSuccessionWindow'] ?? 200.0;
 
-      // Keyboard settings
-      _keymapStyle = prefs['keymapStyle'];
-      _showTopRow = prefs['showTopRow'];
-      _showGraveKey = prefs['showGraveKey'];
-      _keySize = prefs['keySize'];
-      _keyBorderRadius = prefs['keyBorderRadius'];
-      _keyBorderThickness = prefs['keyBorderThickness'];
-      _keyPadding = prefs['keyPadding'];
-      _spaceWidth = prefs['spaceWidth'];
-      _splitWidth = prefs['splitWidth'];
-      _lastRowSplitWidth = prefs['lastRowSplitWidth'];
-      _keyShadowBlurRadius = prefs['keyShadowBlurRadius'];
-      _keyShadowOffsetX = prefs['keyShadowOffsetX'];
-      _keyShadowOffsetY = prefs['keyShadowOffsetY'];
+          // Keyboard settings
+          _keymapStyle = prefs['keymapStyle'];
+          _showTopRow = prefs['showTopRow'];
+          _showGraveKey = prefs['showGraveKey'];
+          _keySize = prefs['keySize'];
+          _keyBorderRadius = prefs['keyBorderRadius'];
+          _keyBorderThickness = prefs['keyBorderThickness'];
+          _keyPadding = prefs['keyPadding'];
+          _spaceWidth = prefs['spaceWidth'];
+          _splitWidth = prefs['splitWidth'];
+          _lastRowSplitWidth = prefs['lastRowSplitWidth'];
+          _keyShadowBlurRadius = prefs['keyShadowBlurRadius'];
+          _keyShadowOffsetX = prefs['keyShadowOffsetX'];
+          _keyShadowOffsetY = prefs['keyShadowOffsetY'];
 
-      // Text settings
-      _fontFamily = prefs['fontFamily'];
-      _fontWeight = prefs['fontWeight'];
-      _keyFontSize = prefs['keyFontSize'];
-      _spaceFontSize = prefs['spaceFontSize'];
+          // Text settings
+          _fontFamily = prefs['fontFamily'];
+          _fontWeight = prefs['fontWeight'];
+          _keyFontSize = prefs['keyFontSize'];
+          _spaceFontSize = prefs['spaceFontSize'];
 
-      // Markers settings
-      _markerOffset = prefs['markerOffset'];
-      _markerWidth = prefs['markerWidth'];
-      _markerHeight = prefs['markerHeight'];
-      _markerBorderRadius = prefs['markerBorderRadius'];
+          // Markers settings
+          _markerOffset = prefs['markerOffset'];
+          _markerWidth = prefs['markerWidth'];
+          _markerHeight = prefs['markerHeight'];
+          _markerBorderRadius = prefs['markerBorderRadius'];
 
-      // Colors settings
-      _keyColorPressed = prefs['keyColorPressed'];
-      _keyColorNotPressed = prefs['keyColorNotPressed'];
-      _markerColor = prefs['markerColor'];
-      _markerColorNotPressed = prefs['markerColorNotPressed'];
-      _keyTextColor = prefs['keyTextColor'];
-      _keyTextColorNotPressed = prefs['keyTextColorNotPressed'];
-      _keyBorderColorPressed = prefs['keyBorderColorPressed'];
-      _keyBorderColorNotPressed = prefs['keyBorderColorNotPressed'];
+          // Colors settings
+          _keyColorPressed = prefs['keyColorPressed'];
+          _keyColorNotPressed = prefs['keyColorNotPressed'];
+          _markerColor = prefs['markerColor'];
+          _markerColorNotPressed = prefs['markerColorNotPressed'];
+          _keyTextColor = prefs['keyTextColor'];
+          _keyTextColorNotPressed = prefs['keyTextColorNotPressed'];
+          _keyBorderColorPressed = prefs['keyBorderColorPressed'];
+          _keyBorderColorNotPressed = prefs['keyBorderColorNotPressed'];
 
-      // Animations settings
-      _animationEnabled = prefs['animationEnabled'];
-      _animationStyle = prefs['animationStyle'];
-      _animationDuration = prefs['animationDuration'];
-      _animationScale = prefs['animationScale'];
+          // Animations settings
+          _animationEnabled = prefs['animationEnabled'];
+          _animationStyle = prefs['animationStyle'];
+          _animationDuration = prefs['animationDuration'];
+          _animationScale = prefs['animationScale'];
 
-      // HotKey settings
-      _hotKeysEnabled = prefs['hotKeysEnabled'];
-      _visibilityHotKey = prefs['visibilityHotKey'];
-      _autoHideHotKey = prefs['autoHideHotKey'];
-      _toggleMoveHotKey = prefs['toggleMoveHotKey'];
-      _preferencesHotKey = prefs['preferencesHotKey'];
-      _increaseOpacityHotKey = prefs['increaseOpacityHotKey'];
-      _decreaseOpacityHotKey = prefs['decreaseOpacityHotKey'];
-      _enableVisibilityHotKey = prefs['enableVisibilityHotKey'] ?? true;
-      _enableAutoHideHotKey = prefs['enableAutoHideHotKey'] ?? true;
-      _enableToggleMoveHotKey = prefs['enableToggleMoveHotKey'] ?? true;
-      _enablePreferencesHotKey = prefs['enablePreferencesHotKey'] ?? true;
-      _enableIncreaseOpacityHotKey = prefs['enableIncreaseOpacityHotKey'] ?? true;
-      _enableDecreaseOpacityHotKey = prefs['enableDecreaseOpacityHotKey'] ?? true;
+          // HotKey settings
+          _hotKeysEnabled = prefs['hotKeysEnabled'];
+          _visibilityHotKey = prefs['visibilityHotKey'];
+          _autoHideHotKey = prefs['autoHideHotKey'];
+          _toggleMoveHotKey = prefs['toggleMoveHotKey'];
+          _preferencesHotKey = prefs['preferencesHotKey'];
+          _increaseOpacityHotKey = prefs['increaseOpacityHotKey'];
+          _decreaseOpacityHotKey = prefs['decreaseOpacityHotKey'];
+          _enableVisibilityHotKey = prefs['enableVisibilityHotKey'] ?? true;
+          _enableAutoHideHotKey = prefs['enableAutoHideHotKey'] ?? true;
+          _enableToggleMoveHotKey = prefs['enableToggleMoveHotKey'] ?? true;
+          _enablePreferencesHotKey = prefs['enablePreferencesHotKey'] ?? true;
+          _enableIncreaseOpacityHotKey =
+              prefs['enableIncreaseOpacityHotKey'] ?? true;
+          _enableDecreaseOpacityHotKey =
+              prefs['enableDecreaseOpacityHotKey'] ?? true;
 
-      // Learn settings
-      _learningModeEnabled = prefs['learningModeEnabled'] ?? false;
-      _pinkyLeftColor = prefs['pinkyLeftColor'];
-      _ringLeftColor = prefs['ringLeftColor'];
-      _middleLeftColor = prefs['middleLeftColor'];
-      _indexLeftColor = prefs['indexLeftColor'];
-      _indexRightColor = prefs['indexRightColor'];
-      _middleRightColor = prefs['middleRightColor'];
-      _ringRightColor = prefs['ringRightColor'];
-      _pinkyRightColor = prefs['pinkyRightColor'];
+          // Learn settings
+          _learningModeEnabled = prefs['learningModeEnabled'] ?? false;
+          _pinkyLeftColor = prefs['pinkyLeftColor'];
+          _ringLeftColor = prefs['ringLeftColor'];
+          _middleLeftColor = prefs['middleLeftColor'];
+          _indexLeftColor = prefs['indexLeftColor'];
+          _indexRightColor = prefs['indexRightColor'];
+          _middleRightColor = prefs['middleRightColor'];
+          _ringRightColor = prefs['ringRightColor'];
+          _pinkyRightColor = prefs['pinkyRightColor'];
 
-      // Advanced settings
-      _advancedSettingsEnabled = prefs['advancedSettingsEnabled'];
-      _useUserLayout = prefs['useUserLayout'];
-      _showAltLayout = prefs['showAltLayout'];
-      _customFontEnabled = prefs['customFontEnabled'];
-      _use6ColLayout = prefs['use6ColLayout'];
-      _kanataEnabled = prefs['kanataEnabled'];
-      _keyboardFollowsMouse = prefs['keyboardFollowsMouse'] ?? false;
+          // Advanced settings
+          _advancedSettingsEnabled = prefs['advancedSettingsEnabled'];
+          _useUserLayout = prefs['useUserLayout'];
+          _showAltLayout = prefs['showAltLayout'];
+          _customFontEnabled = prefs['customFontEnabled'];
+          _debugModeEnabled = prefs['debugModeEnabled'];
+          _thumbDebugModeEnabled = prefs['thumbDebugModeEnabled'];
+          _use6ColLayout = prefs['use6ColLayout'];
+          _kanataEnabled = prefs['kanataEnabled'];
+          _keyboardFollowsMouse = prefs['keyboardFollowsMouse'] ?? false;
         });
       }
     } catch (e) {
-      print('Error loading preferences: $e');
+      debugPrint('Error loading preferences: $e');
       // Continue with default values if loading fails
     }
   }
@@ -313,6 +327,9 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
       'autoHideDuration': _autoHideDuration,
       'opacity': _opacity,
       'keyboardLayoutName': _keyboardLayoutName,
+      'customLayerDelay': _layerShowDelay,
+      'defaultUserLayoutShowDelay': _defaultUserLayoutShowDelay,
+      'quickSuccessionWindow': _quickSuccessionWindow,
 
       // Keyboard settings
       'keymapStyle': _keymapStyle,
@@ -388,6 +405,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
       'useUserLayout': _useUserLayout,
       'showAltLayout': _showAltLayout,
       'customFontEnabled': _customFontEnabled,
+      'debugModeEnabled': _debugModeEnabled,
+      'thumbDebugModeEnabled': _thumbDebugModeEnabled,
       'use6ColLayout': _use6ColLayout,
       'kanataEnabled': _kanataEnabled,
       'keyboardFollowsMouse': _keyboardFollowsMouse,
@@ -409,7 +428,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
       await DesktopMultiWindow.invokeMethod(0, method, value);
       await _savePreferences();
     } catch (e) {
-      print('Error updating main window: $e');
+      debugPrint('Error updating main window: $e');
       // Continue with local save even if main window update fails
       await _savePreferences();
     }
@@ -429,7 +448,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
     return KeyboardListener(
       focusNode: _keyboardFocusNode,
       onKeyEvent: (KeyEvent event) {
-        if (event is KeyDownEvent && 
+        if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.escape &&
             !HardwareKeyboard.instance.isControlPressed &&
             !HardwareKeyboard.instance.isAltPressed &&
@@ -440,17 +459,17 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
         }
       },
       child: MaterialApp(
-      theme: theme,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('en', ''),
-      ],
-      home: Builder(builder: (context) {
-        return Scaffold(
+        theme: theme,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('en', ''),
+        ],
+        home: Builder(builder: (context) {
+          return Scaffold(
             body: Row(
               children: [
                 _buildNavigationPanel(context),
@@ -460,7 +479,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
                     children: [
                       Expanded(
                         child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(20.0, 40.0, 20.0, 20.0),
+                          padding:
+                              const EdgeInsets.fromLTRB(20.0, 40.0, 20.0, 20.0),
                           child: _buildCurrentTabContent(),
                         ),
                       ),
@@ -469,9 +489,9 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
                 ),
               ],
             ),
-        );
-      }),
-      debugShowCheckedModeBanner: false,
+          );
+        }),
+        debugShowCheckedModeBanner: false,
       ), // Close MaterialApp
     ); // Close KeyboardListener
   }
@@ -482,7 +502,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
 
     return Container(
       width: drawerWidth,
-      color: Theme.of(context).drawerTheme.backgroundColor ?? colorScheme.surfaceContainer,
+      color: Theme.of(context).drawerTheme.backgroundColor ??
+          colorScheme.surfaceContainer,
       alignment: Alignment.center,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -529,14 +550,18 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
         child: ListTile(
           leading: Icon(
             _getIconForTab(tabName).icon,
-            color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant.withAlpha(192),
+            color: isSelected
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant.withAlpha(192),
           ),
           title: Text(
             tabName,
             style: TextStyle(
               fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
               fontSize: 16,
-              color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant.withAlpha(192),
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant.withAlpha(192),
             ),
           ),
           onTap: () {
@@ -584,6 +609,9 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
           autoHideDuration: _autoHideDuration,
           keyboardLayoutName: _keyboardLayoutName,
           opacity: _opacity,
+          customLayerDelay: _layerShowDelay,
+          defaultLayerDelay: _defaultUserLayoutShowDelay,
+          quickSuccessionWindow: _quickSuccessionWindow,
           updateLaunchAtStartup: (value) {
             setState(() => _launchAtStartup = value);
             _updateMainWindow('updateLaunchAtStartup', value);
@@ -604,6 +632,21 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
           updateKeyboardLayoutName: (value) {
             setState(() => _keyboardLayoutName = value);
             _updateMainWindow('updateLayout', value);
+          },
+          updateCustomLayerDelay: (value) {
+            setState(() => _layerShowDelay = value);
+            _updateMainWindow('updateLayerShowDelay', value);
+            _prefsService.setCustomLayerDelay(value);
+          },
+          updateDefaultLayerDelay: (value) {
+            setState(() => _defaultUserLayoutShowDelay = value);
+            _updateMainWindow('updateDefaultUserLayoutShowDelay', value);
+            _prefsService.setDefaultLayerDelay(value);
+          },
+          updateQuickSuccessionWindow: (value) {
+            setState(() => _quickSuccessionWindow = value);
+            _updateMainWindow('updateQuickSuccessionWindow', value);
+            _prefsService.setQuickSuccessionWindow(value);
           },
         );
       case 'Keyboard':
@@ -909,6 +952,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
           useUserLayout: _useUserLayout,
           showAltLayout: _showAltLayout,
           customFontEnabled: _customFontEnabled,
+          debugModeEnabled: _debugModeEnabled,
+          thumbDebugModeEnabled: _thumbDebugModeEnabled,
           use6ColLayout: _use6ColLayout,
           kanataEnabled: _kanataEnabled,
           keyboardFollowsMouse: _keyboardFollowsMouse,
@@ -931,6 +976,14 @@ class _PreferencesScreenState extends State<PreferencesScreen> with WindowListen
           updateCustomFontEnabled: (value) {
             setState(() => _customFontEnabled = value);
             _updateMainWindow('updateCustomFontEnabled', value);
+          },
+          updateDebugModeEnabled: (value) {
+            setState(() => _debugModeEnabled = value);
+            _updateMainWindow('updateDebugModeEnabled', value);
+          },
+          updateThumbDebugModeEnabled: (value) {
+            setState(() => _thumbDebugModeEnabled = value);
+            _updateMainWindow('updateThumbDebugModeEnabled', value);
           },
           updateUse6ColLayout: (value) {
             setState(() => _use6ColLayout = value);
