@@ -12,14 +12,10 @@ class KeyboardMonitor {
     // AIDEV-NOTE: Overlay visibility optimization - controlled by Flutter overlay state
     private var isOverlayVisible = false // Start hidden, Flutter will update this
     
-    // AIDEV-NOTE: Event batching for CPU optimization while maintaining zero keystroke loss
+    // AIDEV-NOTE: Simple batching only when overlay is hidden for CPU optimization
     private var eventBatch: [(String, Bool, [String: Bool])] = []
     private var batchTimer: Timer?
-    private let batchInterval: TimeInterval = 0.002 // 2ms batching window
-    
-    // AIDEV-NOTE: Key event deduplication to prevent rapid repeats
-    private var lastKeyEvents: [String: (Bool, Date)] = [:]
-    private let keyRepeatThreshold: TimeInterval = 0.016 // ~60fps
+    private let hiddenBatchInterval: TimeInterval = 0.008 // 8ms batching when hidden
     
     // AIDEV-NOTE: Reusable structures to reduce allocations
     private var reusableModifierDict: [String: Bool] = [:]
@@ -64,25 +60,23 @@ class KeyboardMonitor {
         return result.joined(separator: "+")
     }
     
-    // AIDEV-NOTE: Event batching methods for CPU optimization
-    private func batchKeyEvent(_ keyString: String, _ isPressed: Bool, _ modifiers: [String: Bool]) {
-        let interval = getBatchInterval(keyString, modifiers)
-        
-        // For critical events (interval = 0), send immediately
-        if interval <= 0 {
+    // AIDEV-NOTE: Simplified event processing - immediate when visible, batched when hidden
+    private func processKeyEvent(_ keyString: String, _ isPressed: Bool, _ modifiers: [String: Bool]) {
+        // Always send immediately when overlay is visible to prevent missed events
+        if isOverlayVisible {
             let eventData = [keyString, isPressed, modifiers] as [Any]
             DispatchQueue.main.async {
-                self.channel?.invokeMethod("onCriticalKeyEvents", arguments: [eventData])
+                self.channel?.invokeMethod("onKeyEvent", arguments: eventData)
             }
             return
         }
         
-        // For regular events, use batching
+        // Only batch when overlay is hidden for CPU optimization
         eventBatch.append((keyString, isPressed, modifiers))
         
-        // Reset timer for each new event with dynamic interval
+        // Reset timer for batching
         batchTimer?.invalidate()
-        batchTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { _ in
+        batchTimer = Timer.scheduledTimer(withTimeInterval: hiddenBatchInterval, repeats: false) { _ in
             self.flushEventBatch()
         }
     }
@@ -90,32 +84,13 @@ class KeyboardMonitor {
     private func flushEventBatch() {
         guard !eventBatch.isEmpty else { return }
         
-        // Simple approach: send all events, let Flutter handle them intelligently
-        // Separate critical events (triggers) from regular events
-        let criticalEvents = eventBatch.filter { (key, _, modifiers) in
-            isTriggerKey(key, modifiers)
-        }
-        
-        let regularEvents = eventBatch.filter { (key, _, modifiers) in
-            !isTriggerKey(key, modifiers)
+        // Send all batched events as a simple array
+        let eventData = eventBatch.map { (key, isPressed, modifiers) -> [Any] in
+            return [key, isPressed, modifiers]
         }
         
         DispatchQueue.main.async {
-            // Send critical events immediately with high priority
-            if !criticalEvents.isEmpty {
-                let criticalEventData = criticalEvents.map { (key, isPressed, modifiers) -> [Any] in
-                    return [key, isPressed, modifiers]
-                }
-                self.channel?.invokeMethod("onCriticalKeyEvents", arguments: criticalEventData)
-            }
-            
-            // Send regular events with normal priority
-            if !regularEvents.isEmpty {
-                let regularEventData = regularEvents.map { (key, isPressed, modifiers) -> [Any] in
-                    return [key, isPressed, modifiers]
-                }
-                self.channel?.invokeMethod("onBatchedKeyEvents", arguments: regularEventData)
-            }
+            self.channel?.invokeMethod("onBatchedKeyEvents", arguments: eventData)
         }
         
         eventBatch.removeAll()
@@ -128,30 +103,6 @@ class KeyboardMonitor {
         return true
     }
     
-    private func getBatchInterval(_ keyString: String, _ modifiers: [String: Bool]) -> TimeInterval {
-        // Use immediate processing for trigger keys
-        if isTriggerKey(keyString, modifiers) {
-            lastTriggerTime = Date() // Track trigger timing
-            return 0.0 // No batching for critical events
-        }
-        
-        // AIDEV-NOTE: Smart trigger sequence detection
-        // If we're within the trigger sequence window, use minimal batching for responsiveness
-        if let lastTrigger = lastTriggerTime {
-            let timeSinceTrigger = Date().timeIntervalSince(lastTrigger)
-            if timeSinceTrigger <= triggerSequenceWindow {
-                return 0.001 // 1ms batching during trigger sequences (ultra-responsive)
-            }
-        }
-        
-        // Use longer batching when overlay is hidden to reduce CPU
-        if !isOverlayVisible {
-            return 0.008 // 8ms batching when hidden (less frequent updates)
-        }
-        
-        // Use short batching when overlay is visible for responsiveness  
-        return 0.002 // 2ms batching when visible
-    }
     
     private func isTriggerKey(_ keyString: String, _ modifiers: [String: Bool]) -> Bool {
         let triggerString = createTriggerString(keyString: keyString, modifiers: modifiers)
@@ -159,22 +110,6 @@ class KeyboardMonitor {
         return triggerKeys.contains(normalizedTrigger)
     }
     
-    private func shouldCoalesceKeyEvent(_ keyString: String, _ isPressed: Bool) -> Bool {
-        let now = Date()
-        
-        if let (lastPressed, lastTime) = lastKeyEvents[keyString] {
-            let timeDiff = now.timeIntervalSince(lastTime)
-            
-            // Coalesce rapid repeats of the same state
-            if lastPressed == isPressed && timeDiff < keyRepeatThreshold {
-                return true // Skip this duplicate event
-            }
-        }
-        
-        // Update tracking
-        lastKeyEvents[keyString] = (isPressed, now)
-        return false
-    }
     
     private func isModifierKeyCode(_ keyCode: Int) -> Bool {
         switch keyCode {
@@ -270,9 +205,6 @@ class KeyboardMonitor {
         if !eventBatch.isEmpty {
             flushEventBatch()
         }
-        
-        // Clear tracking data
-        lastKeyEvents.removeAll()
 
         eventTap = nil
         runLoopSource = nil
@@ -297,22 +229,14 @@ class KeyboardMonitor {
         // AIDEV-NOTE: Use efficient modifier extraction to reduce allocations
         let modifiers = extractModifiersEfficiently(from: event.flags)
         
-        // Track trigger timing for smart batching
+        // Track trigger timing
         if isPressed && isTriggerKey(keyString, modifiers) {
             lastTriggerTime = Date()
         }
         
-        // AIDEV-NOTE: Check for rapid key repeats to prevent duplicate processing
-        if shouldCoalesceKeyEvent(keyString, isPressed) {
-            let triggerString = createTriggerString(keyString: keyString, modifiers: modifiers)
-            let normalizedTrigger = normalizeTrigger(triggerString)
-            return triggerKeys.contains(normalizedTrigger)
-        }
-        
-        // AIDEV-NOTE: Determine if we should process this event based on overlay visibility and triggers
+        // AIDEV-NOTE: Always process all events - no coalescing to prevent missed keystrokes
         if shouldProcessEvent(keyString, modifiers) {
-            // AIDEV-NOTE: Use event batching instead of immediate Flutter calls for performance
-            batchKeyEvent(keyString, isPressed, modifiers)
+            processKeyEvent(keyString, isPressed, modifiers)
         }
         
         // AIDEV-NOTE: Check if this is a registered trigger key that should be consumed
