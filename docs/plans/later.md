@@ -1,0 +1,130 @@
+
+# PROMPT EXECUTION GUIDELINES
+
+ALWAYS FOLLOW THIS:
+
+When executing prompts, follow these steps meticulously to ensure consistency and correctness:
+
+1. Open **@docs/plans/01.md** and identify any prompts not marked as completed.
+2. For each incomplete prompt:
+    - keep the prompt section in this doc up to date if needed or provide details, but don't be too verbose, instead focus on the high-level steps.
+    - Double-check if it is truly unfinished (if uncertain, ask for clarification, consult jj diff).
+        - If you confirm it is already done, skip it. found != completed, this means the issue/step/prompt is still open.
+        - if you put Todo/Fallbacks in the code - it is considered as not completed.
+    - Otherwise, implement it as described.
+        - Never deprecate changes or create fallbacks if a developer didn't ask it.
+        - Always prefer assertions to fallbacks and default values.
+        - Assert correct state.
+        - Create new prompts for any new bigger tasks that arise during implementation following prompt creation guidelines.
+    - Make sure the tests pass, and the program builds/runs: (`mise build -> mise test`)
+        - IMPORTANT: Always use
+          `mise` for running tasks - it's superior to manual commands and ensures consistent environment
+        - IMPORTANT: Prefer stdlib functions over custom implementations (e.g., `time.ParseDuration` vs custom parsing)
+    - `jj diff`, check that it makes sense and matches what we were aiming for
+    - **CRITICAL**: In multi-repo setup, commit changes in BOTH locations:
+        1. **Review changes**: `jj diff`
+        2. **Split if needed**: Use `jj split -m` to commit only relevant changes (avoid mixing unrelated changes)
+        3. **Commit**: `jj describe -m "commit message"` then `jj new`
+        4. **Do not use co-authored or generated with claude in commit messages**
+        5. NEVER commit docs/plans/*.md, only relevant changes. 
+    - Update **@docs/plans/01.md** to mark this prompt as completed.
+        - keep this doc up to date if needed, but don't be too verbose, instead focus on the high-level steps.
+3. After you finish each prompt, pause and wait for user review or feedback.
+4. Repeat with the next unfinished prompt as directed by the user.
+
+# Prompt creation guidelines:
+
+Create a prompt in this document to implement the necessary work that agent will execute.
+
+- Use the following format:
+  dont use bold instead use CAPSWORD and emojis to highlight important parts
+  ```markdown
+  # Prompt <index from 1>: <short descriptive title for the prompt>
+  <:optional: description of the prompt>
+  <:optional: critical context or details that are relevant to the prompt or constraints>
+  <:optional: goal of the prompt>
+  - [ ] <description of the change>
+    - [ ] <:optional: subtask 1>
+  ```
+
+Ensure each prompt is clear and actionable.
+
+The Pattern: When you have a data type in one package and its primary construction/manipulation logic in another package, they
+usually belong together. This is especially true when:
+
+- The logic is tightly coupled to the type
+- You're passing awkward parameters to avoid circular imports
+- The separate package exists mainly to serve that one type
+- Lightweight data types → separate packages (avoid circular deps)
+- Heavy business logic → can be co-located with related types
+- Construction/validation logic → same package as the type
+
+
+
+---
+Later dont touch for now
+---
+# Prompt 4: Refactor High-Complexity Rendering Methods
+Reduce cognitive complexity of keyboard rendering methods for better maintainability and performance.
+Methods with complexity scores >40 need refactoring to improve code readability and reduce bugs.
+- [ ] Refactor buildRow() method (complexity 59) in keyboard_screen.dart
+  - [ ] Extract layout-specific logic into separate methods
+  - [ ] Simplify conditional branching for different keymap styles
+- [ ] Refactor buildKeys() method (complexity 53) in keyboard_screen.dart  
+  - [ ] Extract key styling logic into separate method
+  - [ ] Simplify animation and state handling
+- [ ] Refactor _calculateRequiredWidth() method (complexity 45) in app.dart
+  - [ ] Extract split matrix and regular layout calculations
+  - [ ] Unify width calculation logic across layout types
+
+# Prompt 5: Implement Layout Strategy Pattern
+Replace conditional rendering logic with strategy pattern for different keyboard layouts.
+Current nested conditionals make adding new layouts difficult and error-prone.
+- [ ] Create abstract LayoutRenderer interface
+  - [ ] Define common methods: buildRow(), calculateWidth(), calculateHeight()
+- [ ] Implement concrete renderers for each layout type
+  - [ ] StandardLayoutRenderer for regular keyboards
+  - [ ] SplitMatrixLayoutRenderer for split keyboards  
+  - [ ] ThumbClusterLayoutRenderer for complex layouts like Glove80
+- [ ] Update KeyboardScreen to use strategy pattern
+  - [ ] Replace conditional logic with renderer selection
+  - [ ] Simplify layout switching and validation
+
+# Prompt 6: Optimize Widget Performance and Caching
+Improve rendering performance by reducing unnecessary widget rebuilds and implementing caching.
+Current implementation rebuilds all keys on every state change, causing performance issues.
+- [ ] Implement key widget caching system
+  - [ ] Cache static key widgets that don't change state
+  - [ ] Only rebuild keys that actually changed state
+- [ ] Optimize animation performance
+  - [ ] Use AnimatedBuilder for key press animations
+  - [ ] Reduce animation overhead for better frame rates
+- [ ] Implement efficient state management
+  - [ ] Minimize widget tree rebuilds on key events
+  - [ ] Use ValueNotifier for granular state updates
+
+# Prompt 7: Improve Window Size Calculation Precision
+Eliminate safety margins by making width/height calculations match actual rendered content.
+Current 20px safety margin indicates calculation inaccuracy that should be fixed properly.
+- [ ] Analyze actual vs calculated dimensions
+  - [ ] Add measurement tracking for rendered content
+  - [ ] Identify sources of calculation discrepancy
+- [ ] Improve width calculation accuracy
+  - [ ] Account for actual widget padding and margins
+  - [ ] Include border thickness and spacing in calculations
+- [ ] Implement dynamic sizing validation
+  - [ ] Validate calculated vs actual sizes at runtime
+  - [ ] Auto-adjust calculations when discrepancies detected
+
+# Prompt 8: Enhance Multi-Layout and Multi-Monitor Support
+Improve layout switching responsiveness and multi-monitor window positioning.
+Current implementation has delays and positioning issues when switching layouts or monitors.
+- [ ] Optimize layout switching performance
+  - [ ] Reduce window resize delays during layout changes
+  - [ ] Preload layout dimensions for instant switching
+- [ ] Improve multi-monitor support
+  - [ ] Enhanced display detection and validation
+  - [ ] Smart positioning when monitors change configuration
+- [ ] Add responsive design features
+  - [ ] Better adaptation to different screen sizes and DPI
+  - [ ] Automatic scaling for various display configurations

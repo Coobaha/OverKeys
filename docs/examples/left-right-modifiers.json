@@ -1,0 +1,46 @@
+{
+  "userLayouts": [
+    {
+      "name": "Left Side Layer",
+      "layoutStyle": "staggered",
+      "rows": [
+        ["1", "2", "3", "4", "5"],
+        ["Q", "W", "E", "R", "T"]
+      ],
+      "trigger": "LShift+F15",
+      "type": "toggle"
+    },
+    {
+      "name": "Right Side Layer",
+      "layoutStyle": "staggered", 
+      "rows": [
+        ["6", "7", "8", "9", "0"],
+        ["Y", "U", "I", "O", "P"]
+      ],
+      "trigger": "RShift+F15",
+      "type": "toggle"
+    },
+    {
+      "name": "Navigation Layer",
+      "layoutStyle": "staggered",
+      "rows": [
+        ["Home", "Up", "End", "PgUp"],
+        ["Left", "Down", "Right", "PgDn"]
+      ],
+      "trigger": "LCtrl+RCtrl+F20",
+      "type": "held"
+    },
+    {
+      "name": "Command Layer",
+      "layoutStyle": "staggered",
+      "rows": [
+        ["⌘A", "⌘C", "⌘V", "⌘Z"],
+        ["⌘X", "⌘Y", "⌘S", "⌘O"]
+      ],
+      "trigger": "LCmd+RCmd+Space",
+      "type": "toggle"
+    }
+  ],
+  "defaultUserLayout": "Left Side Layer",
+  "_comment": "Left/Right modifiers: LShift, RShift, LCtrl, RCtrl, LAlt, RAlt, LCmd, RCmd"
+}
