@@ -151,7 +151,8 @@ class _GeneralTabState extends State<GeneralTab> {
           max: 3.0,
           divisions: 29,
           onChanged: (value) {
-            setState(() => _localCustomLayerDelay = (value * 1000).round().toDouble());
+            setState(() =>
+                _localCustomLayerDelay = (value * 1000).round().toDouble());
           },
           onChangeEnd: (value) {
             widget.updateCustomLayerDelay((value * 1000).round().toDouble());
@@ -160,13 +161,14 @@ class _GeneralTabState extends State<GeneralTab> {
         ),
         SliderOption(
           label: 'Default layer delay (seconds)',
-          subtitle: 'Delay before showing default layer when inactive', 
+          subtitle: 'Delay before showing default layer when inactive',
           value: _localDefaultLayerDelay / 1000.0,
           min: 0.1,
           max: 2.0,
           divisions: 19,
           onChanged: (value) {
-            setState(() => _localDefaultLayerDelay = (value * 1000).round().toDouble());
+            setState(() =>
+                _localDefaultLayerDelay = (value * 1000).round().toDouble());
           },
           onChangeEnd: (value) {
             widget.updateDefaultLayerDelay((value * 1000).round().toDouble());
@@ -175,13 +177,14 @@ class _GeneralTabState extends State<GeneralTab> {
         ),
         SliderOption(
           label: 'Quick succession window (ms)',
-          subtitle: 'Skip overlay for any keypresses within this timeframe',
+          subtitle: 'Suppress overlay for this duration after first keypress',
           value: _localQuickSuccessionWindow,
-          min: 50.0,
-          max: 500.0,
-          divisions: 18,
+          min: 0.0,
+          max: 3000.0,
+          divisions: 60,
           onChanged: (value) {
-            setState(() => _localQuickSuccessionWindow = value.round().toDouble());
+            setState(
+                () => _localQuickSuccessionWindow = value.round().toDouble());
           },
           onChangeEnd: (value) {
             widget.updateQuickSuccessionWindow(value.round().toDouble());

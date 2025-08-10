@@ -180,6 +180,40 @@ Set the `layoutStyle` field to control rendering:
 
 ## Advanced Features
 
+### Action Mappings
+
+Map semantic labels in your layouts to actual key combinations. This separates what is displayed from what action is performed:
+
+```jsonc
+{
+    "userLayouts": [
+        {
+            "name": "Cursor Layer",
+            "leftHand": {
+                "mainRows": [
+                    ["CUT", "COPY", "PASTE"],
+                    ["ALL", "LINE", "WORD"],
+                    ["UNDO", "REDO", "FIND"]
+                ]
+            }
+        }
+    ],
+    "actionMappings": {
+        "CUT": "cmd+x",
+        "COPY": "cmd+c",
+        "PASTE": "cmd+v",
+        "ALL": "cmd+a",
+        "LINE": "cmd+l",
+        "WORD": "alt+shift+right",
+        "UNDO": "cmd+z",
+        "REDO": "cmd+shift+z",
+        "FIND": "cmd+f"
+    }
+}
+```
+
+For complete documentation on action mappings syntax, modifiers, and platform differences, see [Action Mappings](action-mappings.md).
+
 ### Custom Shift Mappings
 
 Define custom shifted symbols at the root level:

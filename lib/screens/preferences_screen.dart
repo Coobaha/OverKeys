@@ -48,7 +48,7 @@ class _PreferencesScreenState extends State<PreferencesScreen>
   String _keyboardLayoutName = 'QWERTY';
   double _layerShowDelay = 700.0; // 1 second default
   double _defaultUserLayoutShowDelay = 300.0; // 0.5 second default
-  double _quickSuccessionWindow = 200.0; // 200ms default
+  double _quickSuccessionWindow = 350.0; // 350ms default
 
   // Keyboard settings
   String _keymapStyle = 'Staggered';
@@ -228,7 +228,7 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           _layerShowDelay = prefs['customLayerDelay'] ?? 1000.0;
           _defaultUserLayoutShowDelay =
               prefs['defaultUserLayoutShowDelay'] ?? 500.0;
-          _quickSuccessionWindow = prefs['quickSuccessionWindow'] ?? 200.0;
+          _quickSuccessionWindow = prefs['quickSuccessionWindow'] ?? 350.0;
 
           // Keyboard settings
           _keymapStyle = prefs['keymapStyle'];
@@ -479,6 +479,7 @@ class _PreferencesScreenState extends State<PreferencesScreen>
                     children: [
                       Expanded(
                         child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding:
                               const EdgeInsets.fromLTRB(20.0, 40.0, 20.0, 20.0),
                           child: _buildCurrentTabContent(),

@@ -44,18 +44,16 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   double? get maxLayoutWidth => _cachedMaxLayoutWidth;
   static const Duration _fadeDuration = Duration(milliseconds: 200);
   static const Duration _overlayDuration = Duration(milliseconds: 1000);
-  static const double _opacityStep = 0.05;
-  static const double _minOpacity = 0.1;
-  static const double _maxOpacity = 1.0;
+  // Opacity constants moved to SmartVisibilityManager
 
   // UI state
-  bool _isWindowVisible = true;
+  bool _isWindowVisible =
+      false; // Start hidden - only show through SmartVisibilityManager
   bool _isLayoutInitialized = false;
   bool _isInitializing = true;
   bool _ignoreMouseEvents = true;
-  Timer? _autoHideTimer;
+  // Auto-hide timer moved to SmartVisibilityManager
   Timer? _opacityDebounceTimer;
-  bool _forceHide = false;
   bool autoHideBeforeForceHide = false;
   bool autoHideBeforeMove = false;
 
@@ -63,8 +61,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   bool _launchAtStartup = false;
   bool _autoHideEnabled = false;
   double _autoHideDuration = 2.0;
-  double _opacity = 0.6;
-  double _lastOpacity = 0.6;
+  // Opacity now managed by SmartVisibilityManager
+  double get _opacity => _smartVisibilityManager.opacity;
   KeyboardLayout _keyboardLayout = qwerty;
   KeyboardLayout? _initialKeyboardLayout;
   KeyboardLayout? _defaultUserLayout;
@@ -179,12 +177,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   // Smart visibility manager
   late SmartVisibilityManager _smartVisibilityManager;
 
-  // Track if we're in a toggled layer state (not just returned to default)
-  bool _isInToggledLayer = false;
-
-  // Track pressed trigger combinations to ensure releases are also consumed
-  final Set<String> _pressedTriggerCombinations = <String>{};
-
   // Layer switching mode
   bool _layerSwitchingMode = false;
 
@@ -204,19 +196,65 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       {}; // Track physical->visual mapping
   Map<String, String>? _customShiftMappings;
   Map<String, String>? _actionMappings;
-  final Set<String> _activeTriggers = {};
   List<KeyboardLayout> _userLayers = [];
   UserConfig? _userConfig;
 
   @override
   void initState() {
     super.initState();
-    // Initialize SmartVisibilityManager with default values
+    // Initialize SmartVisibilityManager with default values (updated with prefs in _loadAllPreferences)
+    // Auto-hide settings will be updated in _loadAllPreferences
     _smartVisibilityManager = SmartVisibilityManager(
       defaultLayerDelay: 500.0,
       customLayerDelay: 1000.0,
       quickSuccessionWindow: 200.0,
-      debugEnabled: false,
+      debugEnabled: _debugModeEnabled,
+      onVisibilityChange: (visible) {
+        setState(() {
+          _isWindowVisible = visible;
+        });
+        if (kDebugMode && _debugModeEnabled) {
+          debugPrint(
+              '🔄 Smart Visibility: Visibility state updated - $_isWindowVisible');
+        }
+      },
+      onOpacityChange: (opacity) {
+        setState(() {
+          // Opacity is now managed by SmartVisibilityManager, just trigger UI rebuild
+        });
+        if (kDebugMode && _debugModeEnabled) {
+          debugPrint('🔆 Smart Visibility: Opacity state updated - $opacity');
+        }
+      },
+      onFadeIn: () {
+        if (kDebugMode && _debugModeEnabled) {
+          debugPrint(
+              '🔔 Smart Visibility: SmartVisibilityManager requesting _fadeIn()');
+        }
+        _fadeIn();
+      },
+      onFadeOut: () {
+        if (kDebugMode && _debugModeEnabled) {
+          debugPrint(
+              '🔔 Smart Visibility: SmartVisibilityManager requesting _fadeOut()');
+        }
+        _fadeOut();
+      },
+      onLayerChange: (layout) {
+        // AIDEV-NOTE: Layout updates are handled by _handleSmartTransition
+        // This callback is mainly for future extensibility
+        if (kDebugMode && _debugModeEnabled) {
+          debugPrint(
+              '🔄 Smart Visibility: Layer change callback - ${layout.name}');
+        }
+      },
+      onTimerStateChange: (hasActiveTimer) {
+        // Could be used for UI indicators in the future
+        if (kDebugMode && _debugModeEnabled) {
+          debugPrint(
+              '🔔 Smart Visibility: Timer state changed - active: $hasActiveTimer');
+        }
+      },
     );
     _initialize();
   }
@@ -234,23 +272,27 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     _initStartup();
     _setupKanataLayerChangeHandler();
     // Window size adjustment now happens in _loadAllPreferences() before position restoration
-    if (_autoHideEnabled) {
-      _resetAutoHideTimer();
-    }
-    // AIDEV-NOTE: Delay positioning and visibility until layout stabilizes
+    // Auto-hide now handled by SmartVisibilityManager
     Future.delayed(const Duration(milliseconds: 100), () async {
       await _restoreWindowPosition();
       await _adjustWindowSize();
 
-      // Show keyboard layout as initialized but keep it invisible
+      // Show keyboard layout as initialized and sync with SmartVisibilityManager state
       setState(() {
         _isLayoutInitialized = true;
-        // Don't set _isWindowVisible yet - wait for final position
+        _isWindowVisible = _smartVisibilityManager
+            .isVisible; // Sync with SmartVisibilityManager
+        // Opacity is now managed by SmartVisibilityManager
       });
+
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint(
+            '🔄 UI: Startup sync - UI state synced with SmartVisibilityManager (visible: $_isWindowVisible, opacity: $_opacity)');
+      }
 
       setState(() {
         _isInitializing = false; // Mark initialization as complete
-        _isWindowVisible = true; // Now safe to show
+        // Don't set _isWindowVisible = true; - let SmartVisibilityManager control it
       });
     });
   }
@@ -260,7 +302,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     windowManager.removeListener(this);
     trayManager.removeListener(this);
     unhook();
-    _autoHideTimer?.cancel();
+    // Auto-hide timer moved to SmartVisibilityManager
     _overlayTimer?.cancel();
     _mouseCheckTimer?.cancel();
     _smartVisibilityManager.dispose();
@@ -291,8 +333,13 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _launchAtStartup = prefs['launchAtStartup'];
       _autoHideEnabled = prefs['autoHideEnabled'];
       _autoHideDuration = prefs['autoHideDuration'];
-      _opacity = prefs['opacity'];
-      _lastOpacity = prefs['opacity'];
+
+      // Initialize SmartVisibilityManager with preferences
+      _smartVisibilityManager.setOpacity(prefs['opacity']);
+      _smartVisibilityManager.updateAutoHideSettings(
+        enabled: _autoHideEnabled,
+        duration: _autoHideDuration,
+      );
       _keyboardLayout = availableLayouts
           .firstWhere((layout) => layout.name == prefs['keyboardLayoutName']);
       _initialKeyboardLayout = _keyboardLayout;
@@ -381,18 +428,18 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _keyboardFollowsMouse = prefs['keyboardFollowsMouse'];
 
       // Update SmartVisibilityManager with loaded preferences
-      _smartVisibilityManager.updateDelays(
-        defaultLayerDelay: prefs['defaultUserLayoutShowDelay'] ?? 500.0,
-        customLayerDelay: prefs['customLayerDelay'] ?? 1000.0,
-      );
-
-      // Update debug mode setting
-      _smartVisibilityManager = SmartVisibilityManager(
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint(
+            '🔄 Smart Visibility: Loading preferences - default: ${prefs['defaultUserLayoutShowDelay'] ?? 500.0}ms, custom: ${prefs['customLayerDelay'] ?? 1000.0}ms, quick: ${prefs['quickSuccessionWindow'] ?? 200.0}ms');
+      }
+      _smartVisibilityManager.updateConfiguration(
         defaultLayerDelay: prefs['defaultUserLayoutShowDelay'] ?? 500.0,
         customLayerDelay: prefs['customLayerDelay'] ?? 1000.0,
         quickSuccessionWindow: prefs['quickSuccessionWindow'] ?? 200.0,
         debugEnabled: _debugModeEnabled,
       );
+
+      // AIDEV-NOTE: Configuration updated above, no need to recreate manager
     });
 
     // AIDEV-NOTE: Window sizing and positioning will happen after initialization completes
@@ -606,18 +653,22 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         _updateAutoHideBasedOnLayer(isDefaultUserLayout);
       });
       _adjustWindowSize(); // Adjust window for new layout
-      _fadeIn();
+      // Don't show directly - let SmartVisibilityManager control visibility
+      // _fadeIn(); // REMOVED - bypass eliminated
     };
   }
 
   void _updateAutoHideBasedOnLayer(bool isDefaultUserLayout) {
     if (!isDefaultUserLayout && _autoHideEnabled) {
       _autoHideEnabled = false;
-      _autoHideTimer?.cancel();
+      _smartVisibilityManager.updateAutoHideSettings(enabled: false);
       autoHideBeforeMove = true;
     } else if (isDefaultUserLayout && autoHideBeforeMove) {
       _autoHideEnabled = true;
-      _resetAutoHideTimer();
+      _smartVisibilityManager.updateAutoHideSettings(
+        enabled: true,
+        duration: _autoHideDuration,
+      );
       autoHideBeforeMove = false;
     }
   }
@@ -647,8 +698,17 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
       // Update SmartVisibilityManager with default layout info
       _smartVisibilityManager.setDefaultLayer(userLayout.name);
+
+      // Register this layout with SmartVisibilityManager
+      _smartVisibilityManager.registerLayer(userLayout.name, userLayout);
+
+      // Also register all available standard layouts
+      for (final layout in availableLayouts) {
+        _smartVisibilityManager.registerLayer(layout.name, layout);
+      }
+
       // AIDEV-NOTE: Don't adjust window size here - wait for all layers to load first
-      _fadeIn();
+      // Don't show window during initialization - let SmartVisibilityManager control visibility
     }
   }
 
@@ -665,6 +725,15 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _cachedMaxLeftHandWidth = null;
       _cachedMaxRightHandWidth = null;
     });
+
+    // Register all user layers with SmartVisibilityManager
+    for (final layer in layers) {
+      _smartVisibilityManager.registerLayer(layer.name, layer);
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint(
+            '🔧 Smart Visibility: Registered user layer "${layer.name}"');
+      }
+    }
 
     // AIDEV-NOTE: Now that all layers are loaded, calculate final window size
     _adjustWindowSize();
@@ -892,7 +961,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   }
 
   Future<void> _adjustWindowSize() async {
-    _fadeIn();
+    // Don't show window during size adjustment - let SmartVisibilityManager control visibility
 
     // Calculate precise dimensions based on layout content
     double height = _calculateRequiredHeight();
@@ -912,14 +981,11 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   }
 
   void _fadeOut() {
-    if (!_isWindowVisible) return;
     if (kDebugMode && _debugModeEnabled) {
-      debugPrint('👁️ Smart Visibility: FADE OUT - hiding window');
+      debugPrint(
+          '👁️ UI: _fadeOut() called - opacity will be managed by SmartVisibilityManager');
     }
     setState(() {
-      _lastOpacity = _opacity;
-      _opacity = 0.0;
-      _isWindowVisible = false;
       // AIDEV-NOTE: Exit moving mode when keyboard gets hidden
       if (!_ignoreMouseEvents) {
         _ignoreMouseEvents = true;
@@ -928,24 +994,71 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     });
   }
 
+  /// Simple UI fade in - state managed by SmartVisibilityManager callbacks
   void _fadeIn() {
-    if (_forceHide) {
-      if (kDebugMode && _debugModeEnabled) {
-        debugPrint('❌ Smart Visibility: FADE IN blocked - force hide active');
-      }
-      return;
+    if (kDebugMode && _debugModeEnabled) {
+      debugPrint(
+          '🛠️ UI: _fadeIn() called - state managed by SmartVisibilityManager');
     }
-    if (!_isWindowVisible) {
-      if (kDebugMode && _debugModeEnabled) {
-        debugPrint(
-            '👁️ Smart Visibility: FADE IN - showing window for ${_keyboardLayout.name}');
-      }
+    // Auto-hide now handled by SmartVisibilityManager
+  }
+
+  /// AIDEV-NOTE: Handle transitions controlled entirely by SmartVisibilityManager
+  void _handleSmartTransition(LayerTransition transition, String? triggerKey) {
+    // For toggle OFF transitions with fadeout, delay layout update to prevent visual glitch
+    // For toggle OFF without fadeout, update immediately
+    if (transition.type != LayerTransitionType.turnOff ||
+        !transition.shouldFadeOut) {
       setState(() {
-        _isWindowVisible = true;
-        _opacity = _lastOpacity;
+        // Update layout immediately for non-turnOff transitions or turnOff without fadeout
+        if (transition.layout != null) {
+          _keyboardLayout = transition.layout!;
+          if (kDebugMode && _debugModeEnabled) {
+            debugPrint(
+                '🔄 UI: Layout updated to ${transition.layout!.name} immediately');
+          }
+        }
       });
     }
-    _resetAutoHideTimer();
+
+    // Let SmartVisibilityManager handle all visibility decisions with proper delays
+    if (transition.shouldStartTimer) {
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint(
+            '🔔 Smart Visibility: Starting smart timer for ${transition.targetLayerName}');
+      }
+      _smartVisibilityManager.showWithDelay(
+        transition.targetLayerName,
+        pressedKey: triggerKey,
+      );
+    } else if (transition.shouldFadeOut) {
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint('🔔 Smart Visibility: SmartVisibilityManager hiding window');
+      }
+      _smartVisibilityManager.hide();
+
+      // For toggle OFF transitions, update layout after fadeout starts
+      if (transition.type == LayerTransitionType.turnOff) {
+        Future.delayed(_fadeDuration, () {
+          setState(() {
+            if (transition.layout != null) {
+              _keyboardLayout = transition.layout!;
+              if (kDebugMode && _debugModeEnabled) {
+                debugPrint(
+                    '🔄 UI: Layout updated to ${transition.layout!.name} after fadeout');
+              }
+            }
+          });
+        });
+      }
+    }
+
+    // Adjust window size for new layout
+    if (transition.layout != null) {
+      Future.delayed(const Duration(milliseconds: 50), () {
+        _adjustWindowSize();
+      });
+    }
   }
 
   KeyboardService? _keyboardService;
@@ -1004,89 +1117,17 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     });
   }
 
-  // AIDEV-NOTE: Parse trigger string with support for modifier aliases
-  Map<String, dynamic> _parseTrigger(String trigger) {
-    final parts = trigger.split('+');
-    final key = parts.last;
-    final modifierStrings =
-        parts.sublist(0, parts.length - 1).map((m) => m.toLowerCase()).toSet();
-
-    // AIDEV-NOTE: Expand modifier aliases
-    Set<String> modifiers = Set.from(modifierStrings);
-    if (modifiers.contains('meh')) {
-      modifiers.remove('meh');
-      modifiers.addAll(['ctrl', 'alt', 'shift']);
-    }
-    if (modifiers.contains('hyper')) {
-      modifiers.remove('hyper');
-      modifiers.addAll(['ctrl', 'alt', 'shift', 'cmd']);
-    }
-
-    return {
-      'key': key,
-      'shift': modifiers.contains('shift'),
-      'ctrl': modifiers.contains('ctrl'),
-      'alt': modifiers.contains('alt'),
-      'cmd': modifiers.contains('cmd'),
-      'lshift': modifiers.contains('lshift'),
-      'rshift': modifiers.contains('rshift'),
-      'lctrl': modifiers.contains('lctrl'),
-      'rctrl': modifiers.contains('rctrl'),
-      'lalt': modifiers.contains('lalt'),
-      'ralt': modifiers.contains('ralt'),
-      'lcmd': modifiers.contains('lcmd'),
-      'rcmd': modifiers.contains('rcmd'),
-    };
-  }
-
-  // AIDEV-NOTE: Check if current key event matches trigger configuration
-  bool _matchesTrigger(
-      String trigger,
-      String key,
-      bool isShiftDown,
-      bool isCtrlDown,
-      bool isAltDown,
-      bool isCmdDown,
-      bool isLShiftDown,
-      bool isRShiftDown,
-      bool isLCtrlDown,
-      bool isRCtrlDown,
-      bool isLAltDown,
-      bool isRAltDown,
-      bool isLCmdDown,
-      bool isRCmdDown) {
-    final parsed = _parseTrigger(trigger);
-
-    // AIDEV-NOTE: If specific left/right modifiers are specified, check them precisely
-    // Otherwise, check general modifiers (left OR right)
-    bool shiftMatches = parsed['lshift'] || parsed['rshift']
-        ? (parsed['lshift'] == isLShiftDown && parsed['rshift'] == isRShiftDown)
-        : parsed['shift'] == isShiftDown;
-
-    bool ctrlMatches = parsed['lctrl'] || parsed['rctrl']
-        ? (parsed['lctrl'] == isLCtrlDown && parsed['rctrl'] == isRCtrlDown)
-        : parsed['ctrl'] == isCtrlDown;
-
-    bool altMatches = parsed['lalt'] || parsed['ralt']
-        ? (parsed['lalt'] == isLAltDown && parsed['ralt'] == isRAltDown)
-        : parsed['alt'] == isAltDown;
-
-    bool cmdMatches = parsed['lcmd'] || parsed['rcmd']
-        ? (parsed['lcmd'] == isLCmdDown && parsed['rcmd'] == isRCmdDown)
-        : parsed['cmd'] == isCmdDown;
-
-    return parsed['key'] == key &&
-        shiftMatches &&
-        ctrlMatches &&
-        altMatches &&
-        cmdMatches;
-  }
-
   bool _handleKeyEvent(dynamic message) {
     if (message is! List) {
       if (kDebugMode && _debugModeEnabled) {
         debugPrint('🔑 Key Event: Invalid message format, returning false');
       }
+      return false;
+    }
+
+    // Handle session unlock
+    if (message[0] is String && message[0] == 'session_unlock') {
+      setState(() => _keyPressStates.clear());
       return false;
     }
 
@@ -1096,69 +1137,41 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     bool isCtrlDown = false;
     bool isAltDown = false;
     bool isCmdDown = false;
-    bool isLShiftDown = false;
-    bool isRShiftDown = false;
-    bool isLCtrlDown = false;
-    bool isRCtrlDown = false;
-    bool isLAltDown = false;
-    bool isRAltDown = false;
-    bool isLCmdDown = false;
-    bool isRCmdDown = false;
 
+    // Parse message format (macOS string or Windows int)
     if (message[0] is String) {
-      // Handle string-based key events (macOS format)
-      if (message[0] == 'session_unlock') {
-        setState(() => _keyPressStates.clear());
-        return false;
-      }
-
       final keyName = message[0] as String;
       isPressed = message[1] as bool;
 
-      // AIDEV-NOTE: Handle both old format (bool) and new format (Map) for modifiers
+      // Handle modifier parsing
       if (message[2] is bool) {
-        // Old format: [keyName, isPressed, isShiftDown]
         isShiftDown = message[2] as bool;
       } else if (message[2] is Map) {
-        // New format: [keyName, isPressed, {shift: bool, ctrl: bool, alt: bool, cmd: bool, lshift: bool, ...}]
         final modifiers = Map<String, dynamic>.from(message[2] as Map);
         isShiftDown = modifiers['shift'] ?? false;
         isCtrlDown = modifiers['ctrl'] ?? false;
         isAltDown = modifiers['alt'] ?? false;
         isCmdDown = modifiers['cmd'] ?? false;
-        isLShiftDown = modifiers['lshift'] ?? false;
-        isRShiftDown = modifiers['rshift'] ?? false;
-        isLCtrlDown = modifiers['lctrl'] ?? false;
-        isRCtrlDown = modifiers['rctrl'] ?? false;
-        isLAltDown = modifiers['lalt'] ?? false;
-        isRAltDown = modifiers['ralt'] ?? false;
-        isLCmdDown = modifiers['lcmd'] ?? false;
-        isRCmdDown = modifiers['rcmd'] ?? false;
       }
 
-      // Map string key names to layout keys
       key = getKeyFromStringKeyShift(keyName, isShiftDown);
     } else if (message[0] is int) {
-      // Handle integer-based key events (Windows format)
       final keyCode = message[0] as int;
       isPressed = message[1] as bool;
       isShiftDown = message[2] as bool;
       key = getKeyFromKeyCodeShift(keyCode, isShiftDown);
     } else {
-      return false; // Invalid message format
+      return false;
     }
 
+    // Update visual key state
     setState(() {
-      // For macOS string events, track physical key to visual key mapping
       if (message[0] is String) {
         final keyName = message[0] as String;
-
         if (isPressed) {
-          // On press: track which visual key this physical key maps to
           _physicalKeyToVisualKey[keyName] = key;
           _keyPressStates[key] = true;
         } else {
-          // On release: clear the visual key that was set during press
           final pressedVisualKey = _physicalKeyToVisualKey[keyName];
           if (pressedVisualKey != null) {
             _keyPressStates[pressedVisualKey] = false;
@@ -1166,387 +1179,106 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           }
         }
       } else {
-        // For Windows integer events, just track the mapped key
         _keyPressStates[key] = isPressed;
       }
     });
 
-    // AIDEV-NOTE: Handle reverse action mapping - when shortcut is pressed, highlight semantic action keys
+    // Handle reverse action mapping
     _handleReverseActionMapping(
         key, isPressed, isShiftDown, isCtrlDown, isAltDown, isCmdDown);
 
-    // AIDEV-NOTE: Fast check if key+modifiers match any trigger before expensive processing
-    // AIDEV-NOTE: We need to consume BOTH press AND release events for trigger keys to prevent beeps
-    final matchesTriggerNow = _useUserLayout &&
-        _advancedSettingsEnabled &&
-        _userLayers.any((l) =>
-            l.trigger != null &&
-            _matchesTrigger(
-                l.trigger!,
-                key,
-                isShiftDown,
-                isCtrlDown,
-                isAltDown,
-                isCmdDown,
-                isLShiftDown,
-                isRShiftDown,
-                isLCtrlDown,
-                isRCtrlDown,
-                isLAltDown,
-                isRAltDown,
-                isLCmdDown,
-                isRCmdDown));
-
-    // AIDEV-NOTE: Find the matching trigger combination if any
-    String? matchingTrigger;
-    if (matchesTriggerNow) {
-      final matchingLayer = _userLayers.firstWhere((l) =>
-          l.trigger != null &&
-          _matchesTrigger(
-              l.trigger!,
-              key,
-              isShiftDown,
-              isCtrlDown,
-              isAltDown,
-              isCmdDown,
-              isLShiftDown,
-              isRShiftDown,
-              isLCtrlDown,
-              isRCtrlDown,
-              isLAltDown,
-              isRAltDown,
-              isLCmdDown,
-              isRCmdDown));
-      matchingTrigger = matchingLayer.trigger;
+    // Early return when force hidden and not user layout enabled
+    // But allow layer switching even when force hidden
+    if (_smartVisibilityManager.isForceHidden &&
+        (!_useUserLayout || !_advancedSettingsEnabled)) {
+      // Auto-hide now handled by SmartVisibilityManager
+      return false;
     }
 
-    // AIDEV-NOTE: Check if this key is part of any pressed trigger combination
-    bool wasPressedAsTrigger = false;
-    String? triggerToRemove;
-    for (String trigger in _pressedTriggerCombinations) {
-      final parsed = _parseTrigger(trigger);
-      if (parsed['key'] == key) {
-        wasPressedAsTrigger = true;
-        triggerToRemove = trigger;
-        break;
-      }
-    }
-
-    // AIDEV-NOTE: Track complete trigger combinations on press, remove on release
-    if (isPressed && matchingTrigger != null) {
-      _pressedTriggerCombinations.add(matchingTrigger);
-    } else if (!isPressed && triggerToRemove != null) {
-      _pressedTriggerCombinations.remove(triggerToRemove);
-    }
-
-    // AIDEV-NOTE: Consider it a trigger key if it matches now OR was pressed as part of a trigger
-    final isTriggerKey = matchesTriggerNow || wasPressedAsTrigger;
-
-    if (isTriggerKey) {
-      // AIDEV-NOTE: Process triggers even when _forceHide is true (allows triggers to show keyboard)
-      final activeLayer = _userLayers.where((l) =>
-          l.trigger != null &&
-          _matchesTrigger(
-              l.trigger!,
-              key,
-              isShiftDown,
-              isCtrlDown,
-              isAltDown,
-              isCmdDown,
-              isLShiftDown,
-              isRShiftDown,
-              isLCtrlDown,
-              isRCtrlDown,
-              isLAltDown,
-              isRAltDown,
-              isLCmdDown,
-              isRCmdDown));
-
-      // AIDEV-NOTE: First check if this is a trigger key RELEASE that should be consumed
-      if (!isPressed) {
-        // AIDEV-NOTE: For trigger key releases, we always consume to prevent system beep
-        return true;
-      }
-
-      for (final layout in activeLayer) {
-        if (layout.type == 'toggle' && isPressed) {
-          if (kDebugMode && _debugModeEnabled) {
-            debugPrint(
-                '🔄 Smart Visibility: Toggle layer ${layout.name} pressed (current: ${_keyboardLayout.name}, visible: $_isWindowVisible, forceHide: $_forceHide)');
-          }
-          setState(() {
-            // AIDEV-NOTE: Smart toggle behavior with delayed showing
-            if (!_isWindowVisible) {
-              // AIDEV-NOTE: If we're already in this layer but hidden, check if it should toggle OFF or show
-              if (_keyboardLayout.name == layout.name && _isInToggledLayer) {
-                // AIDEV-NOTE: Only toggle OFF if we were actually in a toggled state
-                if (kDebugMode && _debugModeEnabled) {
-                  debugPrint(
-                      '👋 Smart Visibility: Toggle OFF ${layout.name} (was hidden) - canceling pending timers');
-                }
-                // AIDEV-NOTE: Return to default layout and cancel pending timers
-                _smartVisibilityManager
-                    .cancelAllTimers(); // Cancel BEFORE changing layout
-                if (_defaultUserLayout != null) {
-                  _keyboardLayout = _defaultUserLayout!;
-                }
-                _isInToggledLayer = false; // No longer in toggled layer state
-                _forceHide = false;
-                return;
-              }
-
-              if (kDebugMode && _debugModeEnabled) {
-                debugPrint(
-                    '📱 Smart Visibility: Window hidden, switching to ${layout.name} with delay');
-              }
-              // AIDEV-NOTE: Cancel any existing timers before layer change
-              _smartVisibilityManager.cancelAllTimers();
-              _keyboardLayout = layout;
-              _isInToggledLayer = true; // Mark as in toggled layer state
-              _forceHide = false;
-
-              // Update SmartVisibilityManager state and start inactivity timer
-              _smartVisibilityManager.updateLayerState(
-                layerName: layout.name,
-                isInToggledLayer: true,
-              );
-              _smartVisibilityManager.resetInactivityTimer(
-                  layout.name, _conditionalFadeIn,
-                  pressedKey: key);
-            } else if (_keyboardLayout.name == layout.name) {
-              // AIDEV-NOTE: Special handling for default layout vs regular layers
-              bool isDefaultLayout = _defaultUserLayout != null &&
-                  layout.name == _defaultUserLayout!.name;
-
-              if (isDefaultLayout) {
-                // AIDEV-NOTE: Default layout should just hide, not switch to another layout
-                if (kDebugMode && _debugModeEnabled) {
-                  debugPrint(
-                      '👋 Smart Visibility: Toggle OFF ${layout.name} (DEFAULT) - hiding only');
-                }
-                _isInToggledLayer = false;
-                _forceHide = true;
-                _fadeOut();
-                _smartVisibilityManager.cancelAllTimers();
-              } else {
-                // AIDEV-NOTE: Regular layer toggles off and returns to default
-                if (kDebugMode && _debugModeEnabled) {
-                  debugPrint(
-                      '👋 Smart Visibility: Toggle OFF ${layout.name} - hiding and returning to default');
-                }
-                // AIDEV-NOTE: Don't change layout before hiding to prevent visual flash
-                _isInToggledLayer = false;
-                _forceHide = true;
-                _fadeOut();
-                _smartVisibilityManager.cancelAllTimers();
-
-                // AIDEV-NOTE: Schedule layout change after fade animation completes
-                Future.delayed(const Duration(milliseconds: 200), () {
-                  if (_forceHide && _defaultUserLayout != null) {
-                    setState(() {
-                      _keyboardLayout = _defaultUserLayout!;
-                    });
-                  }
-                });
-              }
-            } else {
-              // AIDEV-NOTE: If different layer, switch to it with smart delay behavior
-              if (kDebugMode && _debugModeEnabled) {
-                debugPrint(
-                    '🔄 Smart Visibility: Switching from ${_keyboardLayout.name} to ${layout.name} - hiding and using delay');
-              }
-              // AIDEV-NOTE: Cancel any existing timers before layer change
-              _smartVisibilityManager.cancelAllTimers();
-              _keyboardLayout = layout;
-              _isInToggledLayer = true; // Mark as in toggled layer state
-              _forceHide = false;
-
-              // AIDEV-NOTE: Always use smart delay system when switching TO a layer
-              _fadeOut(); // Hide current layer
-              // Update SmartVisibilityManager state and start inactivity timer
-              _smartVisibilityManager.updateLayerState(
-                layerName: layout.name,
-                isInToggledLayer: true,
-              );
-              _smartVisibilityManager.resetInactivityTimer(
-                  layout.name, _conditionalFadeIn,
-                  pressedKey: key); // Start delay for new layer
-            }
-          });
-
-          // AIDEV-NOTE: Consume trigger key events to prevent system beep
-          return true;
-        } else if (layout.type == 'held') {
-          if (isPressed && !_activeTriggers.contains(key)) {
-            if (kDebugMode && _debugModeEnabled) {
-              debugPrint(
-                  '🔄 Smart Visibility: Held layer ${layout.name} pressed - showing immediately');
-            }
-            setState(() {
-              _keyboardLayout = layout;
-              _activeTriggers.add(key);
-              _isInToggledLayer = true; // Mark as in toggled layer state
-              // AIDEV-NOTE: Held layers show immediately when triggered
-              if (!_isWindowVisible && !_forceHide) {
-                _fadeIn();
-              }
-            });
-            _smartVisibilityManager.cancelAllTimers();
-            // AIDEV-NOTE: Consume held trigger press events
-            return true;
-          } else if (!isPressed && _activeTriggers.contains(key)) {
-            if (kDebugMode && _debugModeEnabled) {
-              debugPrint(
-                  '🔄 Smart Visibility: Held layer ${layout.name} released, returning to default');
-            }
-            setState(() {
-              if (_defaultUserLayout != null) {
-                _keyboardLayout = _defaultUserLayout!;
-              }
-              _activeTriggers.remove(key);
-              _isInToggledLayer = false; // No longer in toggled layer state
-            });
-            // AIDEV-NOTE: Cancel any pending show timers when layer is released
-            _smartVisibilityManager.cancelAllTimers();
-            // AIDEV-NOTE: Consume held trigger release events
-            return true;
-          }
-        }
-      }
-    }
-
-    // AIDEV-NOTE: Early return for non-trigger keys when force hidden (optimization)
-    if (_forceHide) return false;
-
-    // AIDEV-NOTE: Handle non-trigger keypresses for smart visibility and auto-hide
-    if (isPressed) {
-      // AIDEV-NOTE: Only reset inactivity timer if we're actually in a toggled layer
-      if (_isInToggledLayer && _useUserLayout && _advancedSettingsEnabled) {
-        if (kDebugMode && _debugModeEnabled) {
-          debugPrint(
-              '⌨️ Smart Visibility: Regular keypress "$key" - resetting inactivity timer (in toggled layer)');
-        }
-        _smartVisibilityManager.updateLayerState(
-          layerName: _keyboardLayout.name,
-          isInToggledLayer: _isInToggledLayer,
-        );
-        _smartVisibilityManager.resetInactivityTimer(
-            _keyboardLayout.name, _conditionalFadeIn,
-            pressedKey: key);
-      } else if (kDebugMode &&
-          _debugModeEnabled &&
-          _useUserLayout &&
-          _advancedSettingsEnabled) {
-        debugPrint(
-            '⌨️ Smart Visibility: Regular keypress "$key" - NOT in toggled layer, skipping timer');
-      }
-
-      // Traditional auto-hide behavior (show on any keypress when auto-hide enabled)
-      if (_autoHideEnabled && !_isWindowVisible) {
-        if (kDebugMode && _debugModeEnabled) {
-          debugPrint(
-              '👁️ Smart Visibility: Auto-hide showing window on keypress');
-        }
-        _fadeIn();
-      }
-    }
-
-    // Always reset auto-hide timer on any keypress
-    _resetAutoHideTimer();
-
-    // AIDEV-NOTE: Return false for non-trigger keys (allow system to process them normally)
-    return false;
-  }
-
-  void _resetAutoHideTimer() {
-    if (!_autoHideEnabled) return;
-
-    _autoHideTimer?.cancel();
-    _autoHideTimer = Timer(
-        Duration(milliseconds: (_autoHideDuration * 1000).round()),
-        _handleAutoHide);
-  }
-
-  void _handleAutoHide() {
-    if (_autoHideEnabled && _isWindowVisible) {
-      _fadeOut();
-    }
-  }
-
-  // AIDEV-NOTE: Conditional fade in that uses SmartVisibilityManager conditions
-  void _conditionalFadeIn() {
-    if (_smartVisibilityManager.shouldShowOnInactivity(
+    // AIDEV-NOTE: Use unified SmartVisibilityManager key handling
+    final result = _smartVisibilityManager.handleKeyEvent(
+      key: key,
+      isPressed: isPressed,
+      triggers: _getTriggers(),
       useUserLayouts: _useUserLayout,
       advancedSettingsEnabled: _advancedSettingsEnabled,
-      forceHidden: _forceHide,
-      windowVisible: _isWindowVisible,
       hasDefaultLayout: _defaultUserLayout != null,
-    )) {
-      _fadeIn();
+      isWindowVisible: _isWindowVisible,
+      onShow:
+          () {}, // No longer used - SmartVisibilityManager handles all showing internally
+      defaultLayerName: _defaultUserLayout?.name,
+    );
+
+    // Handle layer transition if provided
+    if (result.transition != null) {
+      _handleSmartTransition(result.transition!, key);
     }
+
+    // Notify SmartVisibilityManager of key activity (handles auto-hide internally)
+    if (isPressed) {
+      _smartVisibilityManager.onKeyActivity();
+    }
+
+    return result.shouldConsume;
+  }
+
+  // Auto-hide logic moved to SmartVisibilityManager
+
+  // AIDEV-NOTE: Get triggers map for SmartVisibilityManager
+  Map<String, String> _getTriggers() {
+    final triggers = <String, String>{};
+    for (final layout in _userLayers) {
+      if (layout.trigger != null && layout.trigger!.isNotEmpty) {
+        final key = layout.type == 'held' ? '${layout.name}_held' : layout.name;
+        triggers[key] = layout.trigger!;
+      }
+    }
+    return triggers;
   }
 
   void _toggleAutoHide(bool enable) {
-    setState(() {
-      _autoHideEnabled = enable;
-      if (_autoHideEnabled) {
-        _resetAutoHideTimer();
-      } else {
-        _autoHideTimer?.cancel();
-        if (!_isWindowVisible) {
-          _fadeIn();
-        }
-      }
-    });
-    _showOverlay(
-        _autoHideEnabled ? 'Auto-hide Enabled' : 'Auto-hide Disabled',
-        _autoHideEnabled
-            ? const Icon(LucideIcons.timerReset)
-            : const Icon(LucideIcons.timerOff));
+    _smartVisibilityManager.toggleAutoHideWithOverlay(
+      enable,
+      showOverlay: _showOverlay,
+      savePreferences: _saveAllPreferences,
+      setupTray: _setupTray,
+    );
+
+    // Handle multi-window notification
     DesktopMultiWindow.getAllSubWindowIds().then((windowIds) {
       for (final id in windowIds) {
         DesktopMultiWindow.invokeMethod(
-            id, 'updateAutoHideFromMainWindow', _autoHideEnabled);
+            id, 'updateAutoHideFromMainWindow', enable);
       }
     });
-    _saveAllPreferences();
-    _setupTray();
   }
 
   void _adjustOpacity(bool increase) {
-    if (_forceHide) return;
+    if (_smartVisibilityManager.isForceHidden) return;
 
-    final newLastOpacity = increase
-        ? (_lastOpacity + _opacityStep).clamp(_minOpacity, _maxOpacity)
-        : (_lastOpacity - _opacityStep).clamp(_minOpacity, _maxOpacity);
+    // Use SmartVisibilityManager for opacity adjustment
+    final oldOpacity = _smartVisibilityManager.opacity;
+    _smartVisibilityManager.adjustOpacity(increase);
+    final newOpacity = _smartVisibilityManager.opacity;
 
-    if (newLastOpacity != _lastOpacity) {
-      setState(() {
-        _lastOpacity = newLastOpacity;
-      });
-
+    if (newOpacity != oldOpacity) {
       _showOverlay(
-          'Opacity: ${(_lastOpacity * 100).round()}%',
+          'Opacity: ${(newOpacity * 100).round()}%',
           increase
               ? const Icon(LucideIcons.plusCircle)
               : const Icon(LucideIcons.minusCircle));
-    }
 
-    _opacityDebounceTimer?.cancel();
-    _opacityDebounceTimer = Timer(const Duration(milliseconds: 125), () {
-      if (_opacity != _lastOpacity) {
-        setState(() {
-          _opacity = _lastOpacity;
-        });
+      _opacityDebounceTimer?.cancel();
+      _opacityDebounceTimer = Timer(const Duration(milliseconds: 125), () {
         _saveAllPreferences();
         DesktopMultiWindow.getAllSubWindowIds().then((windowIds) {
           for (final id in windowIds) {
             DesktopMultiWindow.invokeMethod(
-                id, 'updateOpacityFromMainWindow', _opacity);
+                id, 'updateOpacity', {'opacity': newOpacity});
           }
         });
-      }
-    });
+      });
+    }
   }
 
   void _showOverlay(String message, Icon icon) {
@@ -1660,8 +1392,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
               _showOverlay('Move disabled', const Icon(LucideIcons.lock));
             } else {
               // AIDEV-NOTE: Force show keyboard when enabling move mode
-              _forceHide = false;
-              _fadeIn();
+              _smartVisibilityManager.requestVisibilityChange(VisibilityRequest(
+                  type: VisibilityRequestType.show, reason: 'move_mode'));
               _showOverlay('Move enabled', const Icon(LucideIcons.move));
             }
           });
@@ -1766,8 +1498,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
               _showOverlay('Move disabled', const Icon(LucideIcons.lock));
             } else {
               // AIDEV-NOTE: Force show keyboard when enabling move mode
-              _forceHide = false;
-              _fadeIn();
+              _smartVisibilityManager.requestVisibilityChange(VisibilityRequest(
+                  type: VisibilityRequestType.show, reason: 'move_mode'));
               _showOverlay('Move enabled', const Icon(LucideIcons.move));
             }
           });
@@ -1849,16 +1581,21 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   @override
   void onTrayIconMouseDown() {
-    _forceHide = !_forceHide;
-    _showOverlay(
-        _forceHide ? 'Keyboard Hidden' : 'Keyboard Shown',
-        _forceHide
-            ? const Icon(LucideIcons.eyeOff)
-            : const Icon(LucideIcons.eye));
-    if (_isWindowVisible) {
-      _fadeOut();
+    // Always toggle force hidden state regardless of current visibility
+    if (_smartVisibilityManager.isForceHidden) {
+      _smartVisibilityManager.requestVisibilityChange(VisibilityRequest(
+          type: VisibilityRequestType.show, reason: 'tray_click'));
+      _showOverlay('Keyboard Shown', const Icon(LucideIcons.eye));
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint('🔄 Global: Force hidden OFF - keyboard can show again');
+      }
     } else {
-      _fadeIn();
+      _smartVisibilityManager.requestVisibilityChange(VisibilityRequest(
+          type: VisibilityRequestType.hide, reason: 'force_hide'));
+      _showOverlay('Keyboard Hidden', const Icon(LucideIcons.eyeOff));
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint('🔄 Global: Force hidden ON - keyboard will stay hidden');
+      }
     }
     windowManager.blur();
   }
@@ -1968,16 +1705,16 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           });
         case 'updateAutoHideEnabled':
           final autoHideEnabled = call.arguments as bool;
-          _toggleAutoHide(autoHideEnabled);
+          _smartVisibilityManager.updateAutoHideSettings(
+              enabled: autoHideEnabled);
         case 'updateAutoHideDuration':
           final autoHideDuration = call.arguments as double;
-          setState(() => _autoHideDuration = autoHideDuration);
+          _smartVisibilityManager.updateAutoHideSettings(
+              duration: autoHideDuration);
         case 'updateOpacity':
           final opacity = call.arguments as double;
-          setState(() {
-            _opacity = opacity;
-            _lastOpacity = opacity;
-          });
+          _smartVisibilityManager.setOpacity(opacity);
+        // setState will be triggered by onOpacityChange callback
         case 'updateLayerShowDelay':
           final layerShowDelay = call.arguments as double;
           _smartVisibilityManager.updateDelays(
@@ -1988,17 +1725,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
               defaultLayerDelay: defaultUserLayoutShowDelay);
         case 'updateQuickSuccessionWindow':
           final quickSuccessionWindow = call.arguments as double;
-          // Need to recreate the SmartVisibilityManager with new quick succession window
-          _smartVisibilityManager.dispose();
-          _smartVisibilityManager = SmartVisibilityManager(
-            defaultLayerDelay: _smartVisibilityManager.defaultLayerDelay,
-            customLayerDelay: _smartVisibilityManager.customLayerDelay,
-            quickSuccessionWindow: quickSuccessionWindow,
-            debugEnabled: _smartVisibilityManager.debugEnabled,
-          );
-          if (_defaultUserLayout != null) {
-            _smartVisibilityManager.setDefaultLayer(_defaultUserLayout!.name);
-          }
+          _smartVisibilityManager.updateConfiguration(
+              quickSuccessionWindow: quickSuccessionWindow);
         case 'updateLayout':
           final layoutName = call.arguments as String;
           setState(() {
