@@ -4,10 +4,20 @@ import 'package:auto_size_text/auto_size_text.dart';
 import '../models/keyboard_layouts.dart';
 import '../models/mappings.dart';
 import '../models/user_config.dart';
+import '../widgets/optimized_key_widget.dart';
+
+// AIDEV-NOTE: Performance optimization - shared AutoSizeGroup for all keys
+// This prevents each key from recalculating size independently
+final AutoSizeGroup _keyTextGroup = AutoSizeGroup();
 
 class KeyboardScreen extends StatelessWidget {
   final KeyboardLayout layout;
   final String keymapStyle;
+
+  // AIDEV-NOTE: Separate AutoSizeGroups for different key types to prevent over-aggressive sizing
+  static final AutoSizeGroup _singleCharGroup = AutoSizeGroup();
+  static final AutoSizeGroup _multiCharGroup = AutoSizeGroup();
+  static final AutoSizeGroup _spaceKeyGroup = AutoSizeGroup();
   final bool showTopRow;
   final bool showGraveKey;
   final double keySize;
@@ -51,7 +61,6 @@ class KeyboardScreen extends StatelessWidget {
   final bool showAltLayout;
   final KeyboardLayout? altLayout;
   final bool use6ColLayout;
-  final Map<String, bool> keyPressStates;
   final Map<String, String>? customShiftMappings;
   final Map<String, String>?
       actionMappings; // AIDEV-NOTE: Semantic actions to key combinations
@@ -112,7 +121,6 @@ class KeyboardScreen extends StatelessWidget {
     required this.showAltLayout,
     required this.altLayout,
     required this.use6ColLayout,
-    required this.keyPressStates,
     this.customShiftMappings,
     this.actionMappings,
     this.config,
@@ -307,7 +315,7 @@ class KeyboardScreen extends StatelessWidget {
     // Build left hand key widgets with column labels (C6 to C1, right to left)
     List<Widget> leftWidgets = [];
     for (int i = 0; i < leftKeys.length; i++) {
-      Widget keyWidget = buildKeys(rowIndex, leftKeys[i], i);
+      Widget keyWidget = buildOptimizedKey(rowIndex, leftKeys[i], i);
 
       // Add column label for debug mode (left hand: C6 to C1)
       if (debugMode) {
@@ -355,7 +363,7 @@ class KeyboardScreen extends StatelessWidget {
     // Build right hand key widgets with column labels (C1 to C6, left to right)
     List<Widget> rightWidgets = [];
     for (int i = 0; i < rightKeys.length; i++) {
-      Widget keyWidget = buildKeys(rowIndex, rightKeys[i], i);
+      Widget keyWidget = buildOptimizedKey(rowIndex, rightKeys[i], i);
 
       // Add column label for debug mode (right hand: C1 to C6)
       if (debugMode) {
@@ -556,7 +564,8 @@ class KeyboardScreen extends StatelessWidget {
 
       for (int keyIndex = 0; keyIndex < keys.length; keyIndex++) {
         String? key = keys[keyIndex];
-        Widget thumbKey = buildKeys(-1, key, keyIndex, isThumbKey: true);
+        Widget thumbKey =
+            buildOptimizedKey(-1, key, keyIndex, isThumbKey: true);
 
         // Add thumb debug numbering based on Glove80 layout
         if (thumbDebugMode) {
@@ -617,7 +626,7 @@ class KeyboardScreen extends StatelessWidget {
     // Build left hand keys
     List<Widget> leftKeys = [];
     for (int i = 0; i < leftSideCount && i < keys.length; i++) {
-      leftKeys.add(buildKeys(rowIndex, keys[i], i));
+      leftKeys.add(buildOptimizedKey(rowIndex, keys[i], i));
       if (i < leftSideCount - 1) {
         leftKeys.add(SizedBox(width: keyPadding));
       }
@@ -626,7 +635,7 @@ class KeyboardScreen extends StatelessWidget {
     // Build right hand keys
     List<Widget> rightKeys = [];
     for (int i = rightSideStart; i < keys.length; i++) {
-      rightKeys.add(buildKeys(rowIndex, keys[i], i));
+      rightKeys.add(buildOptimizedKey(rowIndex, keys[i], i));
       if (i < keys.length - 1) {
         rightKeys.add(SizedBox(width: keyPadding));
       }
@@ -729,7 +738,7 @@ class KeyboardScreen extends StatelessWidget {
 
         bool isLastKeyFirstRow =
             rowIndex == 0 && i == keys.length - 1 && showGraveKey;
-        rowWidgets.add(buildKeys(rowIndex, keys[i], i,
+        rowWidgets.add(buildOptimizedKey(rowIndex, keys[i], i,
             isLastKeyFirstRow: isLastKeyFirstRow));
       }
     } else {
@@ -741,19 +750,19 @@ class KeyboardScreen extends StatelessWidget {
 
       // Special handling for first row in Split Matrix with 6 columns
       if (rowIndex == 0 && keymapStyle == 'Split Matrix' && use6ColLayout) {
-        rowWidgets.add(buildKeys(rowIndex, keys[0], 0));
+        rowWidgets.add(buildOptimizedKey(rowIndex, keys[0], 0));
 
         for (int i = 1; i < 6; i++) {
-          rowWidgets.add(buildKeys(rowIndex, keys[i], i));
+          rowWidgets.add(buildOptimizedKey(rowIndex, keys[i], i));
         }
 
         rowWidgets.add(SizedBox(width: splitWidth));
 
         for (int i = 6; i < 11; i++) {
-          rowWidgets.add(buildKeys(rowIndex, keys[i], i));
+          rowWidgets.add(buildOptimizedKey(rowIndex, keys[i], i));
         }
 
-        rowWidgets.add(buildKeys(rowIndex, keys[11], 11));
+        rowWidgets.add(buildOptimizedKey(rowIndex, keys[11], 11));
       } else {
         for (int i = startIndex; i < keys.length && i < endIndex; i++) {
           if (keymapStyle == 'Split Matrix') {
@@ -773,11 +782,11 @@ class KeyboardScreen extends StatelessWidget {
               rowIndex == 4 &&
               keys[i] == " " &&
               keys.length == 1) {
-            rowWidgets.add(buildKeys(rowIndex, keys[i], i));
+            rowWidgets.add(buildOptimizedKey(rowIndex, keys[i], i));
             rowWidgets.add(SizedBox(width: lastRowSplitWidth));
-            rowWidgets.add(buildKeys(rowIndex, keys[i], i));
+            rowWidgets.add(buildOptimizedKey(rowIndex, keys[i], i));
           } else {
-            rowWidgets.add(buildKeys(rowIndex, keys[i], i));
+            rowWidgets.add(buildOptimizedKey(rowIndex, keys[i], i));
           }
         }
       }
@@ -792,187 +801,98 @@ class KeyboardScreen extends StatelessWidget {
     );
   }
 
-  Widget buildKeys(int rowIndex, String? key, int keyIndex,
+  // AIDEV-NOTE: Replace buildKeys() method with OptimizedKeyWidget creation
+  Widget buildOptimizedKey(int rowIndex, String? key, int keyIndex,
       {bool isLastKeyFirstRow = false, bool isThumbKey = false}) {
-    // Handle null as invisible placeholder ONLY
+    // Handle null as invisible placeholder
     if (key == null) {
-      // Invisible placeholder must have SAME total size as visible keys (including padding)
       return Padding(
         padding: EdgeInsets.all(keyPadding),
         child: SizedBox(width: keySize, height: keySize),
       );
     }
 
-    // Empty strings should render as visible empty keys, not invisible
-    // Only null should be invisible
+    // Generate unique physical key identifier
+    final physicalKey = _generatePhysicalKeyId(rowIndex, keyIndex, key);
 
-    bool isShiftPressed = (keyPressStates["LShift"] ?? false) ||
-        (keyPressStates["RShift"] ?? false);
-
-    if (isShiftPressed) {
-      if (customShiftMappings != null &&
-          customShiftMappings!.containsKey(key)) {
-        key = customShiftMappings![key]!;
-      } else {
-        key = Mappings.getShiftedSymbol(key) ?? key;
-      }
-    }
-    String realKey = (layout.foreign ?? false)
-        ? (qwerty.keys[rowIndex][keyIndex] ?? "")
-        : (key);
-
-    String keyStateKey = Mappings.getKeyForSymbol(realKey);
-    bool isPressed = keyPressStates[keyStateKey] ?? false;
-
-    if (use6ColLayout) {
-      keyIndex -= 1;
-    }
-    Color keyColor;
-
-    if (isPressed) {
-      keyColor = keyColorPressed;
-    } else if (learningModeEnabled && rowIndex < 4) {
-      keyColor = getFingerColor(rowIndex, keyIndex);
-    } else {
-      keyColor = keyColorNotPressed;
-    }
-
-    Color textColor = isPressed ? keyTextColor : keyTextColorNotPressed;
-    Color tactMarkerColor = isPressed ? markerColor : markerColorNotPressed;
-    Color borderColor =
-        isPressed ? keyBorderColorPressed : keyBorderColorNotPressed;
-
-    double width = key == " "
-        ? spaceWidth
-        : (isLastKeyFirstRow ? keySize * 2 + keyPadding / 2 : keySize);
-
-    Widget keyWidget = Padding(
-      padding: EdgeInsets.all(keyPadding),
-      child: AnimatedContainer(
-        duration: Duration(
-            milliseconds: animationEnabled ? animationDuration.toInt() : 20),
-        curve: Curves.easeInOutCubic,
-        width: width,
-        height: keySize,
-        decoration: BoxDecoration(
-            color: keyColor,
-            borderRadius: BorderRadius.circular(keyBorderRadius),
-            boxShadow: keyShadowBlurRadius > 0
-                ? [
-                    BoxShadow(
-                      blurRadius: keyShadowBlurRadius,
-                      offset: Offset(keyShadowOffsetX, keyShadowOffsetY),
-                    ),
-                  ]
-                : null,
-            border: keyBorderThickness > 0
-                ? Border.all(
-                    color: borderColor,
-                    width: keyBorderThickness,
-                  )
-                : null),
-        transform: _getAnimationTransform(isPressed),
-        child: key == " "
-            ? Center(
-                child: Text(
-                  showAltLayout && altLayout != null
-                      ? "${layout.name.toLowerCase()} (${altLayout!.name.toLowerCase()})"
-                      : layout.name.toLowerCase(),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: spaceFontSize,
-                    fontWeight: fontWeight,
-                  ),
-                ),
-              )
-            : showAltLayout && altLayout != null
-                ? Stack(
-                    children: [
-                      // Primary layout key (top left)
-                      Positioned(
-                        top: 2,
-                        left: 4,
-                        right: width * 0.4,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            Mappings.getDisplayName(key, actionMappings),
-                            textAlign: TextAlign.left,
-                            style: TextStyle(
-                              color: textColor,
-                              fontSize: keyFontSize * 0.7,
-                              fontWeight: fontWeight,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Alt layout key (bottom right)
-                      Positioned(
-                        bottom: 4,
-                        right: 8,
-                        child: Text(
-                          _getAltLayoutKey(rowIndex, keyIndex),
-                          textAlign: TextAlign.right,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: textColor,
-                            fontSize:
-                                _getAltLayoutKey(rowIndex, keyIndex).length > 6
-                                    ? keyFontSize * 0.45
-                                    : _getAltLayoutKey(rowIndex, keyIndex)
-                                                .length >
-                                            2
-                                        ? keyFontSize * 0.6
-                                        : keyFontSize * 0.85,
-                            fontWeight: fontWeight,
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                : Center(
-                    child:
-                        _buildKeyText(key, textColor, keyFontSize, fontWeight),
-                  ),
-      ),
+    return OptimizedKeyWidget(
+      keyLabel: key,
+      physicalKey: physicalKey,
+      rowIndex: rowIndex,
+      keyIndex: keyIndex,
+      keySize: keySize,
+      keyBorderRadius: keyBorderRadius,
+      keyBorderThickness: keyBorderThickness,
+      keyPadding: keyPadding,
+      keyFontSize: keyFontSize,
+      fontWeight: fontWeight,
+      keyColorPressed: keyColorPressed,
+      keyColorNotPressed: keyColorNotPressed,
+      keyTextColor: keyTextColor,
+      keyTextColorNotPressed: keyTextColorNotPressed,
+      keyBorderColorPressed: keyBorderColorPressed,
+      keyBorderColorNotPressed: keyBorderColorNotPressed,
+      animationEnabled: animationEnabled,
+      animationStyle: animationStyle,
+      animationDuration: animationDuration,
+      animationScale: animationScale,
+      learningModeEnabled: learningModeEnabled,
+      fingerColors: [
+        pinkyLeftColor,
+        ringLeftColor,
+        middleLeftColor,
+        indexLeftColor,
+        indexRightColor,
+        middleRightColor,
+        ringRightColor,
+        pinkyRightColor,
+      ],
+      actionMappings: actionMappings,
+      isLastKeyFirstRow: isLastKeyFirstRow,
+      spaceWidth: spaceWidth,
+      autoSizeGroup: _getAutoSizeGroup(key),
     );
-
-    // Tactile Markers - Use homerow metadata or fallback to QWERTY default
-    if (_shouldShowTactileMarker(rowIndex, keyIndex)) {
-      keyWidget = Stack(
-        alignment: showAltLayout && altLayout != null
-            ? Alignment.center
-            : Alignment.bottomCenter,
-        children: [
-          keyWidget,
-          Positioned(
-            bottom: showAltLayout && altLayout != null ? null : markerOffset,
-            child: AnimatedContainer(
-              duration: Duration(
-                  milliseconds:
-                      animationEnabled ? animationDuration.toInt() : 20),
-              curve: Curves.easeInOutCubic,
-              transform: _getMarkerAnimationTransform(isPressed),
-              width:
-                  markerWidth * (showAltLayout && altLayout != null ? 0.5 : 1),
-              height: showAltLayout && altLayout != null
-                  ? markerWidth * 0.5
-                  : markerHeight,
-              decoration: BoxDecoration(
-                color: tactMarkerColor,
-                borderRadius: BorderRadius.circular(markerBorderRadius),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-    return keyWidget;
   }
 
+  // AIDEV-NOTE: Generate unique physical key identifier
+  String _generatePhysicalKeyId(int rowIndex, int keyIndex, String? key) {
+    // AIDEV-NOTE: Use the base layout key for consistent physical key mapping
+    // This ensures the same physical key is tracked regardless of layer switches
+    if (key == null) return 'null_${rowIndex}_$keyIndex';
+
+    // Get the base layout key at this position for consistent physical key identification
+    String baseKey = key;
+    if (showAltLayout && altLayout != null) {
+      // Use the base layout (current layout when altLayout is not shown)
+      // We need to get the base key from the main layout, not the alt layout
+      if (rowIndex < layout.keys.length &&
+          keyIndex < layout.keys[rowIndex].length) {
+        final baseLayoutKey = layout.keys[rowIndex][keyIndex];
+        if (baseLayoutKey != null) {
+          baseKey = baseLayoutKey;
+        }
+      }
+    }
+
+    // Use Mappings.getKeyForSymbol to get the physical key that keyboard events will send
+    return Mappings.getKeyForSymbol(baseKey);
+  }
+
+  // AIDEV-NOTE: Choose appropriate AutoSizeGroup based on key content to prevent over-aggressive sizing
+  AutoSizeGroup? _getAutoSizeGroup(String? key) {
+    if (key == null || key.isEmpty) return null;
+
+    // Space key gets its own group
+    if (key == ' ') return _spaceKeyGroup;
+
+    // Single character keys
+    if (key.length <= 1) return _singleCharGroup;
+
+    // Multi-character keys (like "delete", "enter", etc.)
+    return _multiCharGroup;
+  }
+
+  // ignore: unused_element
   Widget _buildKeyText(
       String? key, Color textColor, double fontSize, FontWeight fontWeight) {
     if (key == null) return const SizedBox.shrink();
@@ -982,19 +902,32 @@ class KeyboardScreen extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-      child: AutoSizeText(
+      child: _buildOptimizedKeyText(
         displayText,
-        style: TextStyle(
-          color: textColor,
-          fontWeight: fontWeight,
-          fontSize: fontSize,
-        ),
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        minFontSize: 8,
-        overflow: TextOverflow.visible,
-        wrapWords: false, // Only break at word boundaries, not mid-word
+        textColor,
+        fontSize,
+        fontWeight,
       ),
+    );
+  }
+
+  // AIDEV-NOTE: Optimized text rendering with shared AutoSizeGroup
+  Widget _buildOptimizedKeyText(String displayText, Color textColor,
+      double fontSize, FontWeight fontWeight) {
+    return AutoSizeText(
+      displayText,
+      group: _keyTextGroup, // Use shared group for performance
+      style: TextStyle(
+        color: textColor,
+        fontWeight: fontWeight,
+        fontSize: fontSize,
+        // AIDEV-NOTE: Let fontFamily inherit from Theme automatically
+      ),
+      textAlign: TextAlign.center,
+      maxLines: 2,
+      minFontSize: 8,
+      overflow: TextOverflow.visible,
+      wrapWords: false, // Only break at word boundaries, not mid-word
     );
   }
 
@@ -1197,6 +1130,7 @@ class KeyboardScreen extends StatelessWidget {
     return totalWidth;
   }
 
+  // ignore: unused_element
   Matrix4 _getAnimationTransform(bool isPressed) {
     if (!animationEnabled || !isPressed) {
       return Matrix4.identity();
@@ -1228,6 +1162,7 @@ class KeyboardScreen extends StatelessWidget {
     }
   }
 
+  // ignore: unused_element
   Matrix4 _getMarkerAnimationTransform(bool isPressed) {
     if (!animationEnabled || !isPressed) {
       return Matrix4.identity();
@@ -1278,6 +1213,7 @@ class KeyboardScreen extends StatelessWidget {
     }
   }
 
+  // ignore: unused_element
   String _getAltLayoutKey(int rowIndex, int keyIndex) {
     if (altLayout == null || rowIndex >= altLayout!.keys.length) {
       return "";
@@ -1287,19 +1223,13 @@ class KeyboardScreen extends StatelessWidget {
       return "";
     }
     String altKey = altRow[keyIndex] ?? "";
-    bool isShiftPressed = (keyPressStates["LShift"] ?? false) ||
-        (keyPressStates["RShift"] ?? false);
-    if (isShiftPressed) {
-      if (customShiftMappings != null &&
-          customShiftMappings!.containsKey(altKey)) {
-        altKey = customShiftMappings![altKey]!;
-      } else {
-        altKey = Mappings.getShiftedSymbol(altKey) ?? altKey;
-      }
-    }
+    // AIDEV-NOTE: Shift detection moved to OptimizedKeyWidget - this method is unused
+    // TODO: Remove this method entirely if not needed
+    // Shift handling is now done in OptimizedKeyWidget
     return altKey;
   }
 
+  // ignore: unused_element
   bool _shouldShowTactileMarker(int rowIndex, int keyIndex) {
     // Check if config has homerow metadata at root level
     if (config != null && config!.homeRow != null) {

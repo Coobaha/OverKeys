@@ -8,6 +8,25 @@ class KeyboardMonitor {
     private var channel: FlutterMethodChannel?
     private var isMonitoring = false
     private var triggerKeys: Set<String> = []
+    
+    // AIDEV-NOTE: Overlay visibility optimization - controlled by Flutter overlay state
+    private var isOverlayVisible = false // Start hidden, Flutter will update this
+    
+    // AIDEV-NOTE: Event batching for CPU optimization while maintaining zero keystroke loss
+    private var eventBatch: [(String, Bool, [String: Bool])] = []
+    private var batchTimer: Timer?
+    private let batchInterval: TimeInterval = 0.002 // 2ms batching window
+    
+    // AIDEV-NOTE: Key event deduplication to prevent rapid repeats
+    private var lastKeyEvents: [String: (Bool, Date)] = [:]
+    private let keyRepeatThreshold: TimeInterval = 0.016 // ~60fps
+    
+    // AIDEV-NOTE: Reusable structures to reduce allocations
+    private var reusableModifierDict: [String: Bool] = [:]
+    
+    // AIDEV-NOTE: Simple trigger sequence detection  
+    private var lastTriggerTime: Date?
+    private let triggerSequenceWindow: TimeInterval = 0.5 // 500ms window after trigger
 
     init(channel: FlutterMethodChannel) {
         self.channel = channel
@@ -16,6 +35,16 @@ class KeyboardMonitor {
     func updateTriggerKeys(_ keys: [String]) {
         // AIDEV-NOTE: Normalize triggers to avoid case/order sensitivity
         self.triggerKeys = Set(keys.map { normalizeTrigger($0) })
+    }
+    
+    // AIDEV-NOTE: Overlay visibility control for performance optimization
+    func setOverlayVisible(_ visible: Bool) {
+        isOverlayVisible = visible
+        
+        // If overlay becomes visible, flush any pending events immediately
+        if visible && !eventBatch.isEmpty {
+            flushEventBatch()
+        }
     }
     
     // AIDEV-NOTE: Normalize trigger strings for consistent matching
@@ -34,6 +63,149 @@ class KeyboardMonitor {
         
         return result.joined(separator: "+")
     }
+    
+    // AIDEV-NOTE: Event batching methods for CPU optimization
+    private func batchKeyEvent(_ keyString: String, _ isPressed: Bool, _ modifiers: [String: Bool]) {
+        let interval = getBatchInterval(keyString, modifiers)
+        
+        // For critical events (interval = 0), send immediately
+        if interval <= 0 {
+            let eventData = [keyString, isPressed, modifiers] as [Any]
+            DispatchQueue.main.async {
+                self.channel?.invokeMethod("onCriticalKeyEvents", arguments: [eventData])
+            }
+            return
+        }
+        
+        // For regular events, use batching
+        eventBatch.append((keyString, isPressed, modifiers))
+        
+        // Reset timer for each new event with dynamic interval
+        batchTimer?.invalidate()
+        batchTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { _ in
+            self.flushEventBatch()
+        }
+    }
+    
+    private func flushEventBatch() {
+        guard !eventBatch.isEmpty else { return }
+        
+        // Simple approach: send all events, let Flutter handle them intelligently
+        // Separate critical events (triggers) from regular events
+        let criticalEvents = eventBatch.filter { (key, _, modifiers) in
+            isTriggerKey(key, modifiers)
+        }
+        
+        let regularEvents = eventBatch.filter { (key, _, modifiers) in
+            !isTriggerKey(key, modifiers)
+        }
+        
+        DispatchQueue.main.async {
+            // Send critical events immediately with high priority
+            if !criticalEvents.isEmpty {
+                let criticalEventData = criticalEvents.map { (key, isPressed, modifiers) -> [Any] in
+                    return [key, isPressed, modifiers]
+                }
+                self.channel?.invokeMethod("onCriticalKeyEvents", arguments: criticalEventData)
+            }
+            
+            // Send regular events with normal priority
+            if !regularEvents.isEmpty {
+                let regularEventData = regularEvents.map { (key, isPressed, modifiers) -> [Any] in
+                    return [key, isPressed, modifiers]
+                }
+                self.channel?.invokeMethod("onBatchedKeyEvents", arguments: regularEventData)
+            }
+        }
+        
+        eventBatch.removeAll()
+    }
+    
+    // AIDEV-NOTE: Helper methods for event processing optimization
+    private func shouldProcessEvent(_ keyString: String, _ modifiers: [String: Bool]) -> Bool {
+        // AIDEV-NOTE: Always process all events for Smart Visibility Manager
+        // The optimization comes from batching, not filtering events
+        return true
+    }
+    
+    private func getBatchInterval(_ keyString: String, _ modifiers: [String: Bool]) -> TimeInterval {
+        // Use immediate processing for trigger keys
+        if isTriggerKey(keyString, modifiers) {
+            lastTriggerTime = Date() // Track trigger timing
+            return 0.0 // No batching for critical events
+        }
+        
+        // AIDEV-NOTE: Smart trigger sequence detection
+        // If we're within the trigger sequence window, use minimal batching for responsiveness
+        if let lastTrigger = lastTriggerTime {
+            let timeSinceTrigger = Date().timeIntervalSince(lastTrigger)
+            if timeSinceTrigger <= triggerSequenceWindow {
+                return 0.001 // 1ms batching during trigger sequences (ultra-responsive)
+            }
+        }
+        
+        // Use longer batching when overlay is hidden to reduce CPU
+        if !isOverlayVisible {
+            return 0.008 // 8ms batching when hidden (less frequent updates)
+        }
+        
+        // Use short batching when overlay is visible for responsiveness  
+        return 0.002 // 2ms batching when visible
+    }
+    
+    private func isTriggerKey(_ keyString: String, _ modifiers: [String: Bool]) -> Bool {
+        let triggerString = createTriggerString(keyString: keyString, modifiers: modifiers)
+        let normalizedTrigger = normalizeTrigger(triggerString)
+        return triggerKeys.contains(normalizedTrigger)
+    }
+    
+    private func shouldCoalesceKeyEvent(_ keyString: String, _ isPressed: Bool) -> Bool {
+        let now = Date()
+        
+        if let (lastPressed, lastTime) = lastKeyEvents[keyString] {
+            let timeDiff = now.timeIntervalSince(lastTime)
+            
+            // Coalesce rapid repeats of the same state
+            if lastPressed == isPressed && timeDiff < keyRepeatThreshold {
+                return true // Skip this duplicate event
+            }
+        }
+        
+        // Update tracking
+        lastKeyEvents[keyString] = (isPressed, now)
+        return false
+    }
+    
+    private func isModifierKeyCode(_ keyCode: Int) -> Bool {
+        switch keyCode {
+        case 0x38, 0x3C, 0x3B, 0x3E, 0x3A, 0x3D, 0x37, 0x36, 0x39:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    
+    private func extractModifiersEfficiently(from flags: CGEventFlags) -> [String: Bool] {
+        // Reuse dictionary to avoid allocations
+        reusableModifierDict.removeAll(keepingCapacity: true)
+        
+        reusableModifierDict["shift"] = flags.contains(.maskShift)
+        reusableModifierDict["ctrl"] = flags.contains(.maskControl)
+        reusableModifierDict["alt"] = flags.contains(.maskAlternate)
+        reusableModifierDict["cmd"] = flags.contains(.maskCommand)
+        reusableModifierDict["lshift"] = flags.contains(.maskShift)
+        reusableModifierDict["rshift"] = flags.contains(.maskShift)
+        reusableModifierDict["lctrl"] = flags.contains(.maskControl)
+        reusableModifierDict["rctrl"] = flags.contains(.maskControl)
+        reusableModifierDict["lalt"] = flags.contains(.maskAlternate)
+        reusableModifierDict["ralt"] = flags.contains(.maskAlternate)
+        reusableModifierDict["lcmd"] = flags.contains(.maskCommand)
+        reusableModifierDict["rcmd"] = flags.contains(.maskCommand)
+        
+        return reusableModifierDict
+    }
+    
 
     func startMonitoring() {
         guard !isMonitoring else { return }
@@ -90,6 +262,17 @@ class KeyboardMonitor {
         if let runLoopSource = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         }
+        
+        // AIDEV-NOTE: Cleanup batching timer and flush any pending events
+        batchTimer?.invalidate()
+        batchTimer = nil
+        
+        if !eventBatch.isEmpty {
+            flushEventBatch()
+        }
+        
+        // Clear tracking data
+        lastKeyEvents.removeAll()
 
         eventTap = nil
         runLoopSource = nil
@@ -98,7 +281,8 @@ class KeyboardMonitor {
 
     private func handleKeyEvent(event: CGEvent, type: CGEventType) -> Bool {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-
+        let keyString = macOSKeyCodeToString(keyCode: Int(keyCode))
+        
         // AIDEV-NOTE: Handle different event types - flagsChanged for modifiers, keyDown/keyUp for regular keys
         let isPressed: Bool
         if type == .flagsChanged {
@@ -110,43 +294,32 @@ class KeyboardMonitor {
             isPressed = type == .keyDown
         }
 
-        let flags = event.flags
-
-        // AIDEV-NOTE: Capture all modifier states including left/right distinction
-        // AIDEV-NOTE: Use available CGEventFlags constants - specific left/right detection requires additional logic
-        let modifiers: [String: Bool] = [
-            "shift": flags.contains(.maskShift),
-            "ctrl": flags.contains(.maskControl),
-            "alt": flags.contains(.maskAlternate),
-            "cmd": flags.contains(.maskCommand),
-            // macOS doesn't provide direct left/right modifier detection via CGEventFlags
-            // These would require additional Carbon Event Manager or other APIs
-            "lshift": flags.contains(.maskShift),  // Fallback to general shift
-            "rshift": flags.contains(.maskShift),  // Fallback to general shift
-            "lctrl": flags.contains(.maskControl), // Fallback to general ctrl
-            "rctrl": flags.contains(.maskControl), // Fallback to general ctrl
-            "lalt": flags.contains(.maskAlternate), // Fallback to general alt
-            "ralt": flags.contains(.maskAlternate), // Fallback to general alt
-            "lcmd": flags.contains(.maskCommand),   // Fallback to general cmd
-            "rcmd": flags.contains(.maskCommand)    // Fallback to general cmd
-        ]
-
-        // Convert macOS key code to string
-        let keyString = macOSKeyCodeToString(keyCode: Int(keyCode))
-
-        // Send event to Flutter with full modifier data
-        let eventData: [Any] = [keyString, isPressed, modifiers]
-
+        // AIDEV-NOTE: Use efficient modifier extraction to reduce allocations
+        let modifiers = extractModifiersEfficiently(from: event.flags)
+        
+        // Track trigger timing for smart batching
+        if isPressed && isTriggerKey(keyString, modifiers) {
+            lastTriggerTime = Date()
+        }
+        
+        // AIDEV-NOTE: Check for rapid key repeats to prevent duplicate processing
+        if shouldCoalesceKeyEvent(keyString, isPressed) {
+            let triggerString = createTriggerString(keyString: keyString, modifiers: modifiers)
+            let normalizedTrigger = normalizeTrigger(triggerString)
+            return triggerKeys.contains(normalizedTrigger)
+        }
+        
+        // AIDEV-NOTE: Determine if we should process this event based on overlay visibility and triggers
+        if shouldProcessEvent(keyString, modifiers) {
+            // AIDEV-NOTE: Use event batching instead of immediate Flutter calls for performance
+            batchKeyEvent(keyString, isPressed, modifiers)
+        }
+        
         // AIDEV-NOTE: Check if this is a registered trigger key that should be consumed
         let triggerString = createTriggerString(keyString: keyString, modifiers: modifiers)
         let normalizedTrigger = normalizeTrigger(triggerString)
         let shouldConsume = triggerKeys.contains(normalizedTrigger)
         
-        // AIDEV-NOTE: Send all events to Flutter for processing (display updates, etc.)
-        DispatchQueue.main.async {
-            self.channel?.invokeMethod("onKeyEvent", arguments: eventData)
-        }
-
         return shouldConsume
     }
 

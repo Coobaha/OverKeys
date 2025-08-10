@@ -105,17 +105,9 @@ class SmartVisibilityManager {
   }) {
     if (defaultLayerDelay != null) {
       _defaultLayerDelay = defaultLayerDelay;
-      if (kDebugMode && debugEnabled) {
-        debugPrint(
-            '🔄 Smart Visibility: Default layer delay updated to ${defaultLayerDelay}ms');
-      }
     }
     if (customLayerDelay != null) {
       _customLayerDelay = customLayerDelay;
-      if (kDebugMode && debugEnabled) {
-        debugPrint(
-            '🔄 Smart Visibility: Custom layer delay updated to ${customLayerDelay}ms');
-      }
     }
   }
 
@@ -132,16 +124,9 @@ class SmartVisibilityManager {
     );
     if (quickSuccessionWindow != null) {
       this.quickSuccessionWindow = quickSuccessionWindow;
-      if (kDebugMode && this.debugEnabled) {
-        debugPrint(
-            '🔄 Smart Visibility: Quick succession window updated to ${quickSuccessionWindow}ms');
-      }
     }
     if (debugEnabled != null) {
       this.debugEnabled = debugEnabled;
-      if (kDebugMode) {
-        debugPrint('🔄 Smart Visibility: Debug mode updated to $debugEnabled');
-      }
     }
   }
 
@@ -180,20 +165,12 @@ class SmartVisibilityManager {
             request.reason != 'force_show' &&
             request.reason != 'tray_click' &&
             request.reason != 'move_mode') {
-          if (kDebugMode && debugEnabled) {
-            debugPrint(
-                '❌ Smart Visibility: Show request blocked - force hidden active');
-          }
           return;
         }
         _isVisible = true;
         _forceHidden = false;
         _opacity = _lastOpacity > 0.0 ? _lastOpacity : 0.85;
         // Always trigger UI updates for show requests
-        if (kDebugMode && debugEnabled) {
-          debugPrint(
-              '🔔 Smart Visibility: SmartVisibilityManager requesting show (opacity: $_opacity)');
-        }
         onVisibilityChange?.call(true);
         onOpacityChange?.call(_opacity);
         onFadeIn?.call();
@@ -207,16 +184,8 @@ class SmartVisibilityManager {
         _opacity = 0.0;
         if (request.reason == 'force_hide') {
           _forceHidden = true;
-          if (kDebugMode && debugEnabled) {
-            debugPrint(
-                '🔒 Smart Visibility: Force hidden ENABLED - overlay blocked until explicit show');
-          }
         }
         // Always trigger UI updates for hide requests
-        if (kDebugMode && debugEnabled) {
-          debugPrint(
-              '🔔 Smart Visibility: SmartVisibilityManager requesting hide');
-        }
         onVisibilityChange?.call(false);
         onOpacityChange?.call(_opacity);
         onFadeOut?.call();
@@ -226,10 +195,6 @@ class SmartVisibilityManager {
           _forceHidden = false;
           _isVisible = true;
           _opacity = _lastOpacity > 0.0 ? _lastOpacity : 0.85;
-          if (kDebugMode && debugEnabled) {
-            debugPrint(
-                '🔔 Smart Visibility: SmartVisibilityManager toggle from force hidden (opacity: $_opacity)');
-          }
           onVisibilityChange?.call(true);
           onOpacityChange?.call(_opacity);
           onFadeIn?.call();
@@ -242,31 +207,18 @@ class SmartVisibilityManager {
             _isVisible = false;
             _opacity = 0.0;
             _forceHidden = true;
-            if (kDebugMode && debugEnabled) {
-              debugPrint(
-                  '🔔 Smart Visibility: SmartVisibilityManager toggle hide');
-            }
             onVisibilityChange?.call(false);
             onOpacityChange?.call(_opacity);
             onFadeOut?.call();
           } else {
             _isVisible = true;
             _opacity = _lastOpacity > 0.0 ? _lastOpacity : 0.85;
-            if (kDebugMode && debugEnabled) {
-              debugPrint(
-                  '🔔 Smart Visibility: SmartVisibilityManager toggle show (opacity: $_opacity)');
-            }
             onVisibilityChange?.call(true);
             onOpacityChange?.call(_opacity);
             onFadeIn?.call();
           }
         }
         break;
-    }
-
-    if (kDebugMode && debugEnabled) {
-      debugPrint(
-          '🔄 Smart Visibility: ${request.type.name} request (${request.reason}) - visible: $previousVisible -> $_isVisible, force hidden: $_forceHidden');
     }
 
     // Notify UI of visibility change
@@ -420,10 +372,6 @@ class SmartVisibilityManager {
       // Handle ignore logic for trigger key
       if (_ignoreNextKeypress) {
         _ignoreNextKeypress = false;
-        if (kDebugMode && debugEnabled) {
-          debugPrint(
-              '🎯 Smart Visibility: Ignoring first keypress (activation trigger) for layer $layerName - starting normal timer');
-        }
         // Set the baseline time for quick succession detection after ignoring trigger
         _layerActivationTime = DateTime.now();
         // Fall through to start normal timer after ignoring trigger
@@ -484,10 +432,6 @@ class SmartVisibilityManager {
         }
 
         // Only show if not suppressed
-        if (kDebugMode && debugEnabled) {
-          debugPrint(
-              '✅ Smart Visibility: Showing overlay after inactivity for $layerName (default: $isDefaultLayer)');
-        }
 
         // Update internal visibility state before calling UI callback
         _isVisible = true;
@@ -495,9 +439,6 @@ class SmartVisibilityManager {
         onVisibilityChange?.call(true);
         onOpacityChange?.call(_opacity);
         onShow();
-      } else if (kDebugMode && debugEnabled) {
-        debugPrint(
-            '❌ Smart Visibility: Skipping show - layer: $_currentLayerName vs $layerName, toggled: $_isInToggledLayer, default: $isDefaultLayer');
       }
     });
 
@@ -511,9 +452,6 @@ class SmartVisibilityManager {
     if (_isInToggledLayer && !isInToggledLayer) {
       _layerSuppressed = false;
       _ignoreNextKeypress = false;
-      if (kDebugMode && debugEnabled) {
-        debugPrint('🔄 Smart Visibility: All flags reset - layer toggled off');
-      }
     }
 
     // Reset flags when entering new layer
@@ -524,10 +462,6 @@ class SmartVisibilityManager {
           true; // Set flag to ignore first keypress (activation trigger)
       _layerActivationTime = DateTime
           .now(); // Set activation timestamp for quick succession detection
-      if (kDebugMode && debugEnabled) {
-        debugPrint(
-            '🎯 Smart Visibility: Ready to ignore activation trigger for $layerName');
-      }
     }
 
     _currentLayerName = layerName;
@@ -568,11 +502,6 @@ class SmartVisibilityManager {
     _ignoreNextKeypress = true;
     _layerActivationTime = DateTime
         .now(); // Set activation timestamp for quick succession detection
-
-    if (kDebugMode && debugEnabled) {
-      debugPrint(
-          '🎯 Smart Visibility: Toggle ON $layerName - ready to ignore activation trigger');
-    }
     return true; // Return true = layer ON
   }
 
@@ -581,10 +510,6 @@ class SmartVisibilityManager {
     _cancelAllTimers();
     // Reset suppression when canceling timers (usually on layer toggle off)
     _layerSuppressed = false;
-    if (kDebugMode && debugEnabled) {
-      debugPrint(
-          '🔄 Smart Visibility: Layer suppression reset on timer cancel');
-    }
   }
 
   void _cancelAllTimers() {
@@ -637,9 +562,6 @@ class SmartVisibilityManager {
       _lastOpacity = _opacity;
     }
     onOpacityChange?.call(_opacity);
-    if (kDebugMode && debugEnabled) {
-      debugPrint('🔆 Smart Visibility: Opacity set to $_opacity');
-    }
   }
 
   /// Adjust opacity up or down
@@ -681,11 +603,6 @@ class SmartVisibilityManager {
     }
     if (duration != null) {
       _autoHideDuration = duration;
-    }
-
-    if (kDebugMode && debugEnabled) {
-      debugPrint(
-          '🔄 Smart Visibility: Auto-hide settings - enabled: $_autoHideEnabled, duration: ${_autoHideDuration}s');
     }
 
     // If auto-hide was just enabled and window is visible, start timer
@@ -733,19 +650,11 @@ class SmartVisibilityManager {
       Duration(milliseconds: (_autoHideDuration * 1000).round()),
       _handleAutoHide,
     );
-
-    if (kDebugMode && debugEnabled) {
-      debugPrint(
-          '🕐 Smart Visibility: Auto-hide timer reset - ${_autoHideDuration}s');
-    }
   }
 
   /// Handle auto-hide timeout
   void _handleAutoHide() {
     if (_autoHideEnabled && _isVisible) {
-      if (kDebugMode && debugEnabled) {
-        debugPrint('⏰ Smart Visibility: Auto-hide timeout - hiding window');
-      }
       // Store current opacity before hiding
       if (_opacity > 0.0) {
         _lastOpacity = _opacity;
@@ -768,9 +677,6 @@ class SmartVisibilityManager {
         onVisibilityChange?.call(true);
         onOpacityChange?.call(_opacity);
         onFadeIn?.call();
-        if (kDebugMode && debugEnabled) {
-          debugPrint('⌨️ Smart Visibility: Key activity - auto-showing window');
-        }
       }
       // Reset timer on any key activity
       _resetAutoHideTimer();
@@ -799,27 +705,15 @@ class SmartVisibilityManager {
       layout: layout,
     );
     _layerStack.add(state);
-
-    if (kDebugMode && debugEnabled) {
-      debugPrint(
-          '📚 Smart Visibility: Pushed layer state: $state (stack size: ${_layerStack.length})');
-    }
   }
 
   /// Pop previous layer state from stack
   LayerState? _popLayerState() {
     if (_layerStack.isEmpty) {
-      if (kDebugMode && debugEnabled) {
-        debugPrint('📚 Smart Visibility: Cannot pop - stack is empty');
-      }
       return null;
     }
 
     final state = _layerStack.removeLast();
-    if (kDebugMode && debugEnabled) {
-      debugPrint(
-          '📚 Smart Visibility: Popped layer state: $state (stack size: ${_layerStack.length})');
-    }
     return state;
   }
 
@@ -850,6 +744,11 @@ class SmartVisibilityManager {
     required VoidCallback onShow,
     String? defaultLayerName,
   }) {
+    // 🚫 FILTER OUT SPURIOUS MODIFIER EVENTS: Ignore modifier events for quick succession detection
+    // These are spurious events from trigger combinations that should not trigger quick succession
+    if (_isSpuriousModifierEvent(key, isPressed)) {
+      return KeyEventResult(shouldConsume: false); // Ignore spurious events
+    }
     // Handle key release events
     if (!isPressed) {
       // Check for held layer release (only log matches, not all checks)
@@ -857,10 +756,6 @@ class SmartVisibilityManager {
         final trigger = entry.value;
         if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger)) {
           if (entry.key.endsWith('_held')) {
-            final layerName = entry.key.replaceAll('_held', '');
-            if (kDebugMode && debugEnabled) {
-              debugPrint('🔄 Smart Visibility: Held layer $layerName released');
-            }
             final transition = handleHeldLayerRelease(defaultLayerName);
             return KeyEventResult(
               shouldConsume: true,
@@ -870,6 +765,7 @@ class SmartVisibilityManager {
           }
         }
       }
+
       return KeyEventResult(shouldConsume: false);
     }
 
@@ -885,10 +781,6 @@ class SmartVisibilityManager {
         if (layerName.endsWith('_held')) {
           // Held layer activation
           final actualLayerName = layerName.replaceAll('_held', '');
-          if (kDebugMode && debugEnabled) {
-            debugPrint(
-                '🔄 Smart Visibility: Held layer $actualLayerName pressed');
-          }
           final transition = handleHeldLayerPress(actualLayerName);
           return KeyEventResult(
             shouldConsume: true,
@@ -1031,11 +923,6 @@ class SmartVisibilityManager {
     _currentLayout = layout;
     _currentLayerName = layerName;
 
-    if (kDebugMode && debugEnabled) {
-      debugPrint(
-          '🔄 Smart Visibility: Held layer $layerName pressed - showing immediately');
-    }
-
     // Notify layer change
     if (layout != null) {
       onLayerChange?.call(layout);
@@ -1073,11 +960,6 @@ class SmartVisibilityManager {
     _currentLayout = layout;
     _currentLayerName = targetLayerName;
 
-    if (kDebugMode && debugEnabled) {
-      debugPrint(
-          '🔄 Smart Visibility: Held layer released, returning to $targetLayerName');
-    }
-
     // Notify layer change
     if (layout != null) {
       onLayerChange?.call(layout);
@@ -1098,6 +980,82 @@ class SmartVisibilityManager {
       shouldShow: false, // SmartVisibilityManager handles it
       useSmartVisibility: true,
     );
+  }
+
+  // 🚫 SMART MODIFIER FILTERING: Detect spurious modifier events from trigger combos
+  bool _isSpuriousModifierEvent(String key, bool isPressed) {
+    // Only filter modifier events (both press and release)
+    final isModifier = _isModifierKey(key);
+    if (!isModifier) return false;
+
+    // If we recently activated a layer via trigger, check if this modifier was part of the trigger
+    if (_layerActivationTime != null && _currentLayerName.isNotEmpty) {
+      final timeSinceActivation =
+          DateTime.now().difference(_layerActivationTime!).inMilliseconds;
+
+      // Within 200ms of layer activation, check if this modifier was part of the trigger combo
+      if (timeSinceActivation <= 100) {
+        // Check if the current layer has a trigger that includes this modifier
+        final wasPartOfTrigger = _wasModifierPartOfLastTrigger(key);
+
+        if (wasPartOfTrigger) {
+          return true; // This modifier was part of the trigger combo
+        }
+      }
+    }
+
+    return false; // Not spurious
+  }
+
+  bool _wasModifierPartOfLastTrigger(String key) {
+    // For the trigger "cmd+alt+ctrl+shift+F19", these modifiers should be filtered:
+    // cmd, alt, ctrl, shift (but not F19, which is the actual trigger key)
+
+    // Map key names to trigger format
+    String triggerModifierName = '';
+    switch (key) {
+      case 'LControl':
+      case 'RControl':
+        triggerModifierName = 'ctrl';
+        break;
+      case 'LShift':
+      case 'RShift':
+        triggerModifierName = 'shift';
+        break;
+      case 'LAlt':
+      case 'RAlt':
+        triggerModifierName = 'alt';
+        break;
+      case 'Cmd':
+      case 'RCmd':
+        triggerModifierName = 'cmd';
+        break;
+      default:
+        return false; // Not a modifier we track
+    }
+
+    // For now, assume all standard modifiers (cmd, alt, ctrl, shift) are part of F19 triggers
+    // This could be enhanced to check the actual trigger string for the current layer
+    final isStandardModifier =
+        ['cmd', 'alt', 'ctrl', 'shift'].contains(triggerModifierName);
+
+    return isStandardModifier;
+  }
+
+  bool _isModifierKey(String key) {
+    switch (key) {
+      case 'LControl':
+      case 'RControl':
+      case 'LShift':
+      case 'RShift':
+      case 'LAlt':
+      case 'RAlt':
+      case 'Cmd':
+      case 'RCmd':
+        return true;
+      default:
+        return false;
+    }
   }
 
   void dispose() {

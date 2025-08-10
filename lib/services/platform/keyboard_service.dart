@@ -27,6 +27,9 @@ abstract class KeyboardService {
 
   /// Update the list of trigger keys that should be consumed
   Future<void> updateTriggerKeys(List<String> triggerKeys);
+  
+  /// Update overlay visibility for Swift-side optimization
+  Future<void> setOverlayVisible(bool visible);
 
   /// Dispose of any resources
   void dispose();
@@ -51,6 +54,12 @@ class _WindowsKeyboardService extends KeyboardService {
 
   @override
   Future<void> updateTriggerKeys(List<String> triggerKeys) async {
+    // Windows implementation would be added here
+    throw UnimplementedError('Windows implementation not yet migrated');
+  }
+  
+  @override
+  Future<void> setOverlayVisible(bool visible) async {
     // Windows implementation would be added here
     throw UnimplementedError('Windows implementation not yet migrated');
   }
@@ -80,8 +89,8 @@ class _MacOSKeyboardService extends KeyboardService {
   Future<dynamic> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
       case 'onKeyEvent':
+        // Legacy single event handler
         final List<dynamic> eventData = call.arguments as List<dynamic>;
-        // AIDEV-NOTE: Process event and return consumption decision synchronously
         try {
           final shouldConsume = _onKeyEvent?.call(eventData) ?? false;
           return shouldConsume;
@@ -89,9 +98,45 @@ class _MacOSKeyboardService extends KeyboardService {
           if (kDebugMode) {
             debugPrint('❌ Error processing key event: $e');
           }
-          // Default to not consuming on error to avoid blocking system shortcuts
           return false;
         }
+        
+      case 'onBatchedKeyEvents':
+        // AIDEV-NOTE: Handle batched regular events for performance optimization
+        final List<dynamic> events = call.arguments as List<dynamic>;
+        bool shouldConsume = false;
+        
+        try {
+          for (final event in events) {
+            final eventData = event as List<dynamic>;
+            shouldConsume = (_onKeyEvent?.call(eventData) ?? false) || shouldConsume;
+          }
+          return shouldConsume;
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ Error processing batched events: $e');
+          }
+          return false;
+        }
+        
+      case 'onCriticalKeyEvents':
+        // AIDEV-NOTE: Handle critical events (triggers) with high priority
+        final List<dynamic> events = call.arguments as List<dynamic>;
+        bool shouldConsume = false;
+        
+        try {
+          for (final event in events) {
+            final eventData = event as List<dynamic>;
+            shouldConsume = (_onKeyEvent?.call(eventData) ?? false) || shouldConsume;
+          }
+          return shouldConsume;
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('❌ Error processing critical events: $e');
+          }
+          return false;
+        }
+        
       default:
         return null;
     }
@@ -176,6 +221,15 @@ class _MacOSKeyboardService extends KeyboardService {
       debugPrint('Failed to get screen dimensions: ${e.message}');
       // Fallback to a reasonable default if native call fails
       return const Size(1920, 1080);
+    }
+  }
+
+  @override
+  Future<void> setOverlayVisible(bool visible) async {
+    try {
+      await _channel.invokeMethod('setOverlayVisible', visible);
+    } on PlatformException catch (e) {
+      debugPrint('Failed to set overlay visibility: ${e.message}');
     }
   }
 

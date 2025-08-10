@@ -49,6 +49,9 @@ class MainFlutterWindow: NSWindow {
 
     // Setup keyboard monitoring channel
     setupKeyboardMonitoring(flutterViewController: flutterViewController)
+    
+    // Setup visibility optimization channel
+    setupVisibilityOptimization(flutterViewController: flutterViewController)
 
     super.awakeFromNib()
   }
@@ -91,6 +94,20 @@ class MainFlutterWindow: NSWindow {
         } else {
           result(FlutterError(code: "INVALID_ARGS", message: "Expected array of strings", details: nil))
         }
+      case "setOverlayHidden":
+        if let hidden = call.arguments as? Bool {
+          self?.keyboardMonitor?.setOverlayVisible(!hidden)
+          result(nil)
+        } else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Expected boolean", details: nil))
+        }
+      case "setOverlayVisible":
+        if let visible = call.arguments as? Bool {
+          self?.keyboardMonitor?.setOverlayVisible(visible)
+          result(nil)
+        } else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Expected boolean", details: nil))
+        }
       case "getScreenDimensions":
         // AIDEV-NOTE: Get actual screen dimensions using NSScreen API
         if let screen = NSScreen.main {
@@ -102,6 +119,29 @@ class MainFlutterWindow: NSWindow {
           result(screenSize)
         } else {
           result(FlutterError(code: "NO_SCREEN", message: "Could not get main screen", details: nil))
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+  
+  private func setupVisibilityOptimization(flutterViewController: FlutterViewController) {
+    // Create visibility optimization channel
+    let visibilityChannel = FlutterMethodChannel(
+      name: "com.overkeys.visibility",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    
+    // Handle method calls from Flutter
+    visibilityChannel.setMethodCallHandler { [weak self] (call, result) in
+      switch call.method {
+      case "setOverlayHidden":
+        if let hidden = call.arguments as? Bool {
+          self?.keyboardMonitor?.setOverlayVisible(!hidden)
+          result(nil)
+        } else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Expected boolean", details: nil))
         }
       default:
         result(FlutterMethodNotImplemented)

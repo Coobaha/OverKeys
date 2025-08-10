@@ -17,6 +17,8 @@ import 'package:overkeys/services/kanata_service.dart';
 import 'package:overkeys/services/preferences_service.dart';
 import 'package:overkeys/services/platform/keyboard_service.dart';
 import 'package:overkeys/services/smart_visibility_manager.dart';
+import 'package:overkeys/services/key_state_manager.dart';
+import 'package:overkeys/services/key_render_cache.dart';
 import 'package:overkeys/utils/key_code_unified.dart';
 import 'package:overkeys/widgets/status_overlay.dart';
 import 'package:overkeys/widgets/layer_selector.dart';
@@ -34,6 +36,10 @@ class MainApp extends StatefulWidget {
 
 class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   static const double _baseWindowPadding = 40; // Base padding around content
+
+  // AIDEV-NOTE: Method channel for Swift overlay visibility optimization
+  static const MethodChannel _platformChannel =
+      MethodChannel('com.overkeys.visibility');
 
   // AIDEV-NOTE: Cache maximum layout width to prevent recalculation on layer switches
   double? _cachedMaxLayoutWidth;
@@ -57,6 +63,34 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   bool autoHideBeforeForceHide = false;
   bool autoHideBeforeMove = false;
 
+  // AIDEV-NOTE: Visibility-aware rendering optimization - pause expensive operations when hidden
+  bool get _shouldRender =>
+      _isWindowVisible || _smartVisibilityManager.isInToggledLayer;
+
+  // AIDEV-NOTE: Optimized setState for key state updates only - allows critical updates
+  // ignore: unused_element
+  void _setStateOptimizedForKeyUpdates(VoidCallback fn) {
+    // Only optimize key press state updates when hidden
+    // Always allow: font changes, layout updates, configuration changes
+    if (_shouldRender) {
+      setState(fn);
+    } else {
+      // Execute the state change but skip UI rebuild for key presses when hidden
+      fn();
+    }
+  }
+
+  /// AIDEV-NOTE: Inform Swift about overlay visibility for keyboard monitoring optimization
+  Future<void> _updateSwiftOverlayVisibility(bool isVisible) async {
+    try {
+      await _platformChannel.invokeMethod('setOverlayHidden', !isVisible);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️  Swift Optimization: Failed to update visibility: $e');
+      }
+    }
+  }
+
   // General settings
   bool _launchAtStartup = false;
   bool _autoHideEnabled = false;
@@ -74,7 +108,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   double _keySize = 48;
   double _keyBorderRadius = 2;
   double _keyBorderThickness = 0;
-  double _keyPadding = 3;
+  double _keyPadding = 5;
   double _spaceWidth = 320;
   double _splitWidth = 100;
   double _lastRowSplitWidth = 100;
@@ -191,9 +225,13 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   Timer? _overlayTimer;
 
   // Misc
-  final Map<String, bool> _keyPressStates = {};
+  // AIDEV-NOTE: Replace bulk setState() with granular ValueNotifier pattern
   final Map<String, String> _physicalKeyToVisualKey =
       {}; // Track physical->visual mapping
+
+  // Add performance services
+  late final KeyStateManager _keyStateManager;
+  late final KeyRenderCache _renderCache;
   Map<String, String>? _customShiftMappings;
   Map<String, String>? _actionMappings;
   List<KeyboardLayout> _userLayers = [];
@@ -202,6 +240,11 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   @override
   void initState() {
     super.initState();
+
+    // Initialize performance services
+    _keyStateManager = KeyStateManager();
+    _renderCache = KeyRenderCache();
+
     // Initialize SmartVisibilityManager with default values (updated with prefs in _loadAllPreferences)
     // Auto-hide settings will be updated in _loadAllPreferences
     _smartVisibilityManager = SmartVisibilityManager(
@@ -212,7 +255,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       onVisibilityChange: (visible) {
         setState(() {
           _isWindowVisible = visible;
-        });
+        }); // Always update visibility changes immediately
+        // AIDEV-NOTE: Inform Swift about overlay visibility for optimization
+        _updateSwiftOverlayVisibility(visible);
         if (kDebugMode && _debugModeEnabled) {
           debugPrint(
               '🔄 Smart Visibility: Visibility state updated - $_isWindowVisible');
@@ -221,7 +266,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       onOpacityChange: (opacity) {
         setState(() {
           // Opacity is now managed by SmartVisibilityManager, just trigger UI rebuild
-        });
+        }); // Always update opacity changes immediately
         if (kDebugMode && _debugModeEnabled) {
           debugPrint('🔆 Smart Visibility: Opacity state updated - $opacity');
         }
@@ -250,10 +295,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       },
       onTimerStateChange: (hasActiveTimer) {
         // Could be used for UI indicators in the future
-        if (kDebugMode && _debugModeEnabled) {
-          debugPrint(
-              '🔔 Smart Visibility: Timer state changed - active: $hasActiveTimer');
-        }
       },
     );
     _initialize();
@@ -308,6 +349,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     _smartVisibilityManager.dispose();
     _kanataService.dispose();
     _keyboardService?.dispose();
+    _keyStateManager.dispose();
+    _renderCache.invalidateCache(reason: 'App disposed');
+    // No process to kill anymore
+    _saveAllPreferences();
     // No process to kill anymore
     _saveAllPreferences();
     super.dispose();
@@ -1115,6 +1160,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       final shouldConsumeEvent = _handleKeyEvent(message);
       return shouldConsumeEvent;
     });
+
+    // AIDEV-NOTE: Ensure Swift knows overlay is visible by default
+    await _keyboardService!.setOverlayVisible(true);
   }
 
   bool _handleKeyEvent(dynamic message) {
@@ -1127,7 +1175,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
     // Handle session unlock
     if (message[0] is String && message[0] == 'session_unlock') {
-      setState(() => _keyPressStates.clear());
+      _keyStateManager.clearAllKeys();
       return false;
     }
 
@@ -1164,24 +1212,22 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       return false;
     }
 
-    // Update visual key state
-    setState(() {
-      if (message[0] is String) {
-        final keyName = message[0] as String;
-        if (isPressed) {
-          _physicalKeyToVisualKey[keyName] = key;
-          _keyPressStates[key] = true;
-        } else {
-          final pressedVisualKey = _physicalKeyToVisualKey[keyName];
-          if (pressedVisualKey != null) {
-            _keyPressStates[pressedVisualKey] = false;
-            _physicalKeyToVisualKey.remove(keyName);
-          }
-        }
+    // Update visual key state using KeyStateManager instead of setState()
+    if (message[0] is String) {
+      final keyName = message[0] as String;
+      if (isPressed) {
+        _physicalKeyToVisualKey[keyName] = key;
+        _keyStateManager.updateKeyState(key, true);
       } else {
-        _keyPressStates[key] = isPressed;
+        final pressedVisualKey = _physicalKeyToVisualKey[keyName];
+        if (pressedVisualKey != null) {
+          _keyStateManager.updateKeyState(pressedVisualKey, false);
+          _physicalKeyToVisualKey.remove(keyName);
+        }
       }
-    });
+    } else {
+      _keyStateManager.updateKeyState(key, isPressed);
+    }
 
     // Handle reverse action mapping
     _handleReverseActionMapping(
@@ -1317,6 +1363,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _keyboardLayout = newLayer;
     });
 
+    // AIDEV-NOTE: Clear all key states when switching layers to prevent stuck keys
+    _keyStateManager.clearAllKeys();
+
     // Show status overlay to indicate layer switch
     _showOverlay('Switched to ${newLayer.name}',
         const Icon(LucideIcons.layers, color: Colors.white));
@@ -1334,6 +1383,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         windowManager.setIgnoreMouseEvents(_ignoreMouseEvents);
       }
     });
+
+    // AIDEV-NOTE: Clear key states when entering/exiting layer switching mode
+    _keyStateManager.clearAllKeys();
 
     final message = _layerSwitchingMode
         ? 'Layer switching enabled'
@@ -2094,8 +2146,23 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     });
   }
 
+  // Add configuration hash generation for cache invalidation
+  String _generateConfigHash() {
+    return [
+      _keySize,
+      _keyBorderRadius,
+      _animationEnabled,
+      _animationStyle,
+      _learningModeEnabled,
+      // Add other relevant config values
+    ].join('_');
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Check for cache invalidation
+    _renderCache.checkConfigChange(_generateConfigHash());
+
     return MaterialApp(
       title: 'OverKeys',
       theme: Platform.isMacOS
@@ -2177,7 +2244,6 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
                                 _advancedSettingsEnabled && _showAltLayout,
                             altLayout: _altLayout,
                             use6ColLayout: _use6ColLayout,
-                            keyPressStates: _keyPressStates,
                             customShiftMappings: _customShiftMappings,
                             actionMappings: _actionMappings,
                             config: _userConfig,
@@ -2326,14 +2392,12 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         }
       }
 
-      // Update the key press states for all matching semantic keys
-      setState(() {
-        for (final semanticKey in semanticKeys) {
-          // Only highlight if the semantic action is currently active
-          final shouldBePressed = _activeSemanticActions.contains(semanticKey);
-          _keyPressStates[semanticKey] = shouldBePressed;
-        }
-      });
+      // Update the key press states using KeyStateManager instead of setState()
+      for (final semanticKey in semanticKeys) {
+        // Only highlight if the semantic action is currently active
+        final shouldBePressed = _activeSemanticActions.contains(semanticKey);
+        _keyStateManager.updateKeyState(semanticKey, shouldBePressed);
+      }
     }
   }
 
