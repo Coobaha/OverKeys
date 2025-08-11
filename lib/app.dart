@@ -1253,6 +1253,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       onShow:
           () {}, // No longer used - SmartVisibilityManager handles all showing internally
       defaultLayerName: _defaultUserLayout?.name,
+      isShiftDown: isShiftDown,
+      isCtrlDown: isCtrlDown,
+      isAltDown: isAltDown,
+      isCmdDown: isCmdDown,
     );
 
     // Handle layer transition if provided

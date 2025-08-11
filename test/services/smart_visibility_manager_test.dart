@@ -248,6 +248,10 @@ void main() {
         isWindowVisible: false,
         onShow: () => fadeInCalled = true,
         defaultLayerName: 'GRAPHITE',
+        isShiftDown: true,
+        isCtrlDown: true,
+        isAltDown: true,
+        isCmdDown: true,
       );
 
       expect(result1.shouldConsume, isTrue);
@@ -265,6 +269,10 @@ void main() {
         isWindowVisible: true,
         onShow: () => fadeInCalled = true,
         defaultLayerName: 'GRAPHITE',
+        isShiftDown: true,
+        isCtrlDown: true,
+        isAltDown: true,
+        isCmdDown: true,
       );
 
       expect(result2.shouldConsume, isTrue);

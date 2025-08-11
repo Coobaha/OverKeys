@@ -232,10 +232,20 @@ class SmartVisibilityManager {
 
   /// Check if should consume event based on triggers and state
   bool shouldConsumeEvent(
-      String key, bool isPressed, Map<String, String> triggers) {
+      String key, bool isPressed, Map<String, String> triggers, {
+      required bool isShiftDown,
+      required bool isCtrlDown,
+      required bool isAltDown,
+      required bool isCmdDown,
+    }) {
     // Always consume trigger key events to prevent system beep
     for (final trigger in triggers.values) {
-      if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger)) {
+      if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger,
+        isShiftDown: isShiftDown,
+        isCtrlDown: isCtrlDown,
+        isAltDown: isAltDown,
+        isCmdDown: isCmdDown,
+      )) {
         return true;
       }
     }
@@ -248,11 +258,33 @@ class SmartVisibilityManager {
     return false;
   }
 
-  /// Check if key matches trigger (simplified version)
-  bool _matchesTriggerKey(String key, String trigger) {
+  /// Check if key matches trigger with full modifier validation
+  bool _matchesTriggerKey(String key, String trigger, {
+    required bool isShiftDown,
+    required bool isCtrlDown,
+    required bool isAltDown,
+    required bool isCmdDown,
+  }) {
     final parts = trigger.split('+');
     final triggerKey = parts.last;
-    return key.toLowerCase() == triggerKey.toLowerCase();
+    
+    // Check if pressed key matches trigger key
+    if (key.toLowerCase() != triggerKey.toLowerCase()) {
+      return false;
+    }
+    
+    // Check modifier requirements
+    final requiredModifiers = parts.take(parts.length - 1).toSet();
+    final pressedModifiers = <String>{};
+    
+    if (isShiftDown) pressedModifiers.add('shift');
+    if (isCtrlDown) pressedModifiers.add('ctrl');
+    if (isAltDown) pressedModifiers.add('alt');
+    if (isCmdDown) pressedModifiers.add('cmd');
+    
+    // Must have exact modifier match
+    return requiredModifiers.length == pressedModifiers.length &&
+        requiredModifiers.every((modifier) => pressedModifiers.contains(modifier));
   }
 
   /// Show window with proper delay respecting configuration
@@ -273,6 +305,15 @@ class SmartVisibilityManager {
 
     // Always start timers for layer switching, even when force hidden
     resetInactivityTimer(layerName, () {
+      // Guard: Check if already visible to prevent redundant operations
+      if (_isVisible && _opacity > 0.0) {
+        if (kDebugMode && debugEnabled) {
+          debugPrint(
+              '✅ Smart Visibility: Already visible - skipping redundant show for $layerName');
+        }
+        return;
+      }
+
       if (kDebugMode && debugEnabled) {
         debugPrint(
             '👁️ Smart Visibility: Timer expired - showing $layerName (force hidden: $_forceHidden)');
@@ -307,6 +348,15 @@ class SmartVisibilityManager {
     if (kDebugMode && debugEnabled) {
       debugPrint(
           '👁️ Smart Visibility: ShowImmediate $layerName (force hidden: $_forceHidden)');
+    }
+
+    // Guard: Check if already visible to prevent redundant operations
+    if (_isVisible && _opacity > 0.0) {
+      if (kDebugMode && debugEnabled) {
+        debugPrint(
+            '✅ Smart Visibility: Already visible - skipping redundant showImmediate for $layerName');
+      }
+      return;
     }
 
     // Allow held layers to work even when force hidden (they override global hide)
@@ -431,13 +481,16 @@ class SmartVisibilityManager {
           return;
         }
 
-        // Only show if not suppressed
+        // Check if already visible to avoid redundant operations
+        if (_isVisible && _opacity > 0.0) {
+          if (kDebugMode && debugEnabled) {
+            debugPrint(
+                '✅ Smart Visibility: Already visible with opacity $_opacity - skipping redundant show');
+          }
+          return;
+        }
 
-        // Update internal visibility state before calling UI callback
-        _isVisible = true;
-        _opacity = _lastOpacity > 0.0 ? _lastOpacity : 0.85;
-        onVisibilityChange?.call(true);
-        onOpacityChange?.call(_opacity);
+        // Only show if not suppressed and not already visible
         onShow();
       }
     });
@@ -742,6 +795,10 @@ class SmartVisibilityManager {
     required bool hasDefaultLayout,
     required bool isWindowVisible,
     required VoidCallback onShow,
+    required bool isShiftDown,
+    required bool isCtrlDown,
+    required bool isAltDown,
+    required bool isCmdDown,
     String? defaultLayerName,
   }) {
     // 🚫 FILTER OUT SPURIOUS MODIFIER EVENTS: Ignore modifier events for quick succession detection
@@ -754,7 +811,12 @@ class SmartVisibilityManager {
       // Check for held layer release (only log matches, not all checks)
       for (final entry in triggers.entries) {
         final trigger = entry.value;
-        if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger)) {
+        if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger,
+          isShiftDown: isShiftDown,
+          isCtrlDown: isCtrlDown,
+          isAltDown: isAltDown,
+          isCmdDown: isCmdDown,
+        )) {
           if (entry.key.endsWith('_held')) {
             final transition = handleHeldLayerRelease(defaultLayerName);
             return KeyEventResult(
@@ -770,12 +832,22 @@ class SmartVisibilityManager {
     }
 
     // Handle key press events
-    bool shouldConsume = shouldConsumeEvent(key, isPressed, triggers);
+    bool shouldConsume = shouldConsumeEvent(key, isPressed, triggers,
+      isShiftDown: isShiftDown,
+      isCtrlDown: isCtrlDown,
+      isAltDown: isAltDown,
+      isCmdDown: isCmdDown,
+    );
 
     // Check for layer triggers
     for (final entry in triggers.entries) {
       final trigger = entry.value;
-      if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger)) {
+      if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger,
+        isShiftDown: isShiftDown,
+        isCtrlDown: isCtrlDown,
+        isAltDown: isAltDown,
+        isCmdDown: isCmdDown,
+      )) {
         final layerName = entry.key;
 
         if (layerName.endsWith('_held')) {
@@ -879,10 +951,13 @@ class SmartVisibilityManager {
     }
 
     // Otherwise turn ON this layer (PUSH current state to stack)
-    // Push current state before switching
+    // Store the intended visibility state rather than current UI state
+    // This prevents issues where a layer is marked as visible when it's actually hidden
+    final shouldLayerBeVisible = !_forceHidden && (_isInToggledLayer || isWindowVisible);
+    
     _pushLayerState(
         _currentLayerName.isEmpty ? defaultLayerName ?? '' : _currentLayerName,
-        isWindowVisible);
+        shouldLayerBeVisible);
 
     _isInToggledLayer = true;
     _currentLayerName = layerName;
