@@ -236,6 +236,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   Map<String, String>? _actionMappings;
   List<KeyboardLayout> _userLayers = [];
   UserConfig? _userConfig;
+  bool _isShiftPressed = false; // AIDEV-NOTE: Global shift state for custom shift mappings
 
   @override
   void initState() {
@@ -1227,6 +1228,13 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       }
     } else {
       _keyStateManager.updateKeyState(key, isPressed);
+    }
+
+    // Update global shift state for custom shift mappings
+    if (key == 'LShift' || key == 'RShift') {
+      setState(() {
+        _isShiftPressed = isPressed;
+      });
     }
 
     // Handle reverse action mapping
@@ -2251,6 +2259,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
                             customShiftMappings: _customShiftMappings,
                             actionMappings: _actionMappings,
                             config: _userConfig,
+                            isShiftPressed: _isShiftPressed,
                             debugMode: _debugModeEnabled,
                             thumbDebugMode: _thumbDebugModeEnabled,
                             maxLayoutWidth: _cachedMaxLayoutWidth,

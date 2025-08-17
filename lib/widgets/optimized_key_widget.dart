@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import '../services/key_state_manager.dart';
@@ -31,6 +32,8 @@ class OptimizedKeyWidget extends StatefulWidget {
   final bool isLastKeyFirstRow;
   final double spaceWidth;
   final AutoSizeGroup? autoSizeGroup;
+  final bool isShiftPressed; // AIDEV-NOTE: Current shift state for custom shift mappings
+  final Map<String, String>? customShiftMappings;
 
   const OptimizedKeyWidget({
     super.key,
@@ -60,6 +63,8 @@ class OptimizedKeyWidget extends StatefulWidget {
     this.isLastKeyFirstRow = false,
     required this.spaceWidth,
     this.autoSizeGroup,
+    this.isShiftPressed = false,
+    this.customShiftMappings,
   });
 
   @override
@@ -72,6 +77,11 @@ class _OptimizedKeyWidgetState extends State<OptimizedKeyWidget>
   late final KeyRenderCache _renderCache;
   late ValueNotifier<bool> _keyNotifier;
   late final AnimationController _animationController;
+
+  // AIDEV-NOTE: Handle rapid tap detection for complex keyboards
+  Timer? _extendVisibilityTimer;
+  bool _shouldExtendVisibility = false;
+  static const Duration _minVisibilityDuration = Duration(milliseconds: 30);
 
   // Cached values
   int? _fingerIndex;
@@ -86,6 +96,9 @@ class _OptimizedKeyWidgetState extends State<OptimizedKeyWidget>
     _renderCache = KeyRenderCache();
     _keyNotifier = _keyStateManager.getKeyNotifier(widget.physicalKey);
 
+    // AIDEV-NOTE: Use direct listener to catch rapid state changes that ValueListenableBuilder misses
+    _keyNotifier.addListener(_onKeyStateChanged);
+
     _animationController = AnimationController(
       duration: Duration(milliseconds: widget.animationDuration.toInt()),
       vsync: this,
@@ -99,16 +112,68 @@ class _OptimizedKeyWidgetState extends State<OptimizedKeyWidget>
   void didUpdateWidget(OptimizedKeyWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Recalculate values if key properties changed (e.g., during layer switching)
+    // Recalculate values if key properties changed (e.g., during layer switching or shift state change)
     if (oldWidget.keyLabel != widget.keyLabel ||
         oldWidget.physicalKey != widget.physicalKey ||
         oldWidget.spaceWidth != widget.spaceWidth ||
-        oldWidget.keySize != widget.keySize) {
+        oldWidget.keySize != widget.keySize ||
+        oldWidget.isShiftPressed != widget.isShiftPressed) {
       _precalculateValues();
+
+      // AIDEV-NOTE: Reset visibility extension on any layer switch
+      if (oldWidget.keyLabel != widget.keyLabel ||
+          oldWidget.physicalKey != widget.physicalKey) {
+        _extendVisibilityTimer?.cancel();
+        _shouldExtendVisibility = false;
+      }
 
       // Update the key notifier if the physical key changed
       if (oldWidget.physicalKey != widget.physicalKey) {
+        _keyNotifier.removeListener(_onKeyStateChanged);
         _keyNotifier = _keyStateManager.getKeyNotifier(widget.physicalKey);
+        _keyNotifier.addListener(_onKeyStateChanged);
+      }
+    }
+  }
+
+  // AIDEV-NOTE: Direct listener to catch rapid state changes
+  void _onKeyStateChanged() {
+    if (!mounted) return;
+
+    final keyPressed = _keyNotifier.value;
+
+    // AIDEV-NOTE: Always respect ValueNotifier state immediately to prevent stuck keys
+    if (keyPressed) {
+      // Key pressed - show immediately and set visibility extension
+      _extendVisibilityTimer?.cancel();
+      _shouldExtendVisibility = true;
+
+      setState(() {
+        if (widget.animationEnabled) {
+          _animationController.forward();
+        }
+      });
+    } else {
+      // Key released - start timer to extend visibility briefly for rapid taps
+      _extendVisibilityTimer?.cancel();
+      _extendVisibilityTimer = Timer(_minVisibilityDuration, () {
+        if (mounted) {
+          setState(() {
+            _shouldExtendVisibility = false;
+            if (widget.animationEnabled && !_keyNotifier.value) {
+              _animationController.reverse();
+            }
+          });
+        }
+      });
+
+      // If not extending visibility, hide immediately
+      if (!_shouldExtendVisibility) {
+        setState(() {
+          if (widget.animationEnabled) {
+            _animationController.reverse();
+          }
+        });
       }
     }
   }
@@ -171,31 +236,21 @@ class _OptimizedKeyWidgetState extends State<OptimizedKeyWidget>
       return '';
     }
 
-    return Mappings.getDisplayName(widget.keyLabel!, widget.actionMappings);
+    return Mappings.getDisplayName(widget.keyLabel!, widget.actionMappings,
+        isShiftPressed: widget.isShiftPressed, 
+        customShiftMappings: widget.customShiftMappings);
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.all(widget.keyPadding),
-      child: ValueListenableBuilder<bool>(
-        valueListenable: _keyNotifier,
-        builder: (context, isPressed, child) {
-          // Update animation
-          if (widget.animationEnabled) {
-            if (isPressed) {
-              _animationController.forward();
-            } else {
-              _animationController.reverse();
-            }
-          }
-
-          return AnimatedBuilder(
-            animation: _animationController,
-            builder: (context, child) {
-              return _buildKeyContainer(isPressed);
-            },
-          );
+      child: AnimatedBuilder(
+        animation: _animationController,
+        builder: (context, child) {
+          // AIDEV-NOTE: Show as pressed if ValueNotifier is true OR we're extending visibility
+          final isPressed = _keyNotifier.value || _shouldExtendVisibility;
+          return _buildKeyContainer(isPressed);
         },
       ),
     );
@@ -277,6 +332,8 @@ class _OptimizedKeyWidgetState extends State<OptimizedKeyWidget>
 
   @override
   void dispose() {
+    _extendVisibilityTimer?.cancel();
+    _keyNotifier.removeListener(_onKeyStateChanged);
     _animationController.dispose();
     // Note: Don't dispose _keyNotifier - it's managed by KeyStateManager
     super.dispose();

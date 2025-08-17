@@ -232,20 +232,25 @@ class SmartVisibilityManager {
 
   /// Check if should consume event based on triggers and state
   bool shouldConsumeEvent(
-      String key, bool isPressed, Map<String, String> triggers, {
-      required bool isShiftDown,
-      required bool isCtrlDown,
-      required bool isAltDown,
-      required bool isCmdDown,
-    }) {
+    String key,
+    bool isPressed,
+    Map<String, String> triggers, {
+    required bool isShiftDown,
+    required bool isCtrlDown,
+    required bool isAltDown,
+    required bool isCmdDown,
+  }) {
     // Always consume trigger key events to prevent system beep
     for (final trigger in triggers.values) {
-      if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger,
-        isShiftDown: isShiftDown,
-        isCtrlDown: isCtrlDown,
-        isAltDown: isAltDown,
-        isCmdDown: isCmdDown,
-      )) {
+      if (trigger.isNotEmpty &&
+          _matchesTriggerKey(
+            key,
+            trigger,
+            isShiftDown: isShiftDown,
+            isCtrlDown: isCtrlDown,
+            isAltDown: isAltDown,
+            isCmdDown: isCmdDown,
+          )) {
         return true;
       }
     }
@@ -259,32 +264,46 @@ class SmartVisibilityManager {
   }
 
   /// Check if key matches trigger with full modifier validation
-  bool _matchesTriggerKey(String key, String trigger, {
+  bool _matchesTriggerKey(
+    String key,
+    String trigger, {
     required bool isShiftDown,
     required bool isCtrlDown,
     required bool isAltDown,
     required bool isCmdDown,
   }) {
-    final parts = trigger.split('+');
-    final triggerKey = parts.last;
-    
+    // AIDEV-NOTE: Handle + as the actual key by checking for trailing +
+    String triggerKey;
+    Set<String> requiredModifiers;
+
+    if (trigger.endsWith('++')) {
+      // Special case: + is the key (e.g., "cmd+alt+ctrl+shift++")
+      triggerKey = '+';
+      requiredModifiers =
+          trigger.substring(0, trigger.length - 2).split('+').toSet();
+    } else {
+      // Normal case: split and take last part
+      final parts = trigger.split('+');
+      triggerKey = parts.last;
+      requiredModifiers = parts.take(parts.length - 1).toSet();
+    }
+
     // Check if pressed key matches trigger key
     if (key.toLowerCase() != triggerKey.toLowerCase()) {
       return false;
     }
-    
+
     // Check modifier requirements
-    final requiredModifiers = parts.take(parts.length - 1).toSet();
     final pressedModifiers = <String>{};
-    
+
     if (isShiftDown) pressedModifiers.add('shift');
     if (isCtrlDown) pressedModifiers.add('ctrl');
     if (isAltDown) pressedModifiers.add('alt');
     if (isCmdDown) pressedModifiers.add('cmd');
-    
     // Must have exact modifier match
     return requiredModifiers.length == pressedModifiers.length &&
-        requiredModifiers.every((modifier) => pressedModifiers.contains(modifier));
+        requiredModifiers
+            .every((modifier) => pressedModifiers.contains(modifier));
   }
 
   /// Show window with proper delay respecting configuration
@@ -811,12 +830,15 @@ class SmartVisibilityManager {
       // Check for held layer release (only log matches, not all checks)
       for (final entry in triggers.entries) {
         final trigger = entry.value;
-        if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger,
-          isShiftDown: isShiftDown,
-          isCtrlDown: isCtrlDown,
-          isAltDown: isAltDown,
-          isCmdDown: isCmdDown,
-        )) {
+        if (trigger.isNotEmpty &&
+            _matchesTriggerKey(
+              key,
+              trigger,
+              isShiftDown: isShiftDown,
+              isCtrlDown: isCtrlDown,
+              isAltDown: isAltDown,
+              isCmdDown: isCmdDown,
+            )) {
           if (entry.key.endsWith('_held')) {
             final transition = handleHeldLayerRelease(defaultLayerName);
             return KeyEventResult(
@@ -832,7 +854,10 @@ class SmartVisibilityManager {
     }
 
     // Handle key press events
-    bool shouldConsume = shouldConsumeEvent(key, isPressed, triggers,
+    bool shouldConsume = shouldConsumeEvent(
+      key,
+      isPressed,
+      triggers,
       isShiftDown: isShiftDown,
       isCtrlDown: isCtrlDown,
       isAltDown: isAltDown,
@@ -842,12 +867,15 @@ class SmartVisibilityManager {
     // Check for layer triggers
     for (final entry in triggers.entries) {
       final trigger = entry.value;
-      if (trigger.isNotEmpty && _matchesTriggerKey(key, trigger,
-        isShiftDown: isShiftDown,
-        isCtrlDown: isCtrlDown,
-        isAltDown: isAltDown,
-        isCmdDown: isCmdDown,
-      )) {
+      if (trigger.isNotEmpty &&
+          _matchesTriggerKey(
+            key,
+            trigger,
+            isShiftDown: isShiftDown,
+            isCtrlDown: isCtrlDown,
+            isAltDown: isAltDown,
+            isCmdDown: isCmdDown,
+          )) {
         final layerName = entry.key;
 
         if (layerName.endsWith('_held')) {
@@ -953,8 +981,9 @@ class SmartVisibilityManager {
     // Otherwise turn ON this layer (PUSH current state to stack)
     // Store the intended visibility state rather than current UI state
     // This prevents issues where a layer is marked as visible when it's actually hidden
-    final shouldLayerBeVisible = !_forceHidden && (_isInToggledLayer || isWindowVisible);
-    
+    final shouldLayerBeVisible =
+        !_forceHidden && (_isInToggledLayer || isWindowVisible);
+
     _pushLayerState(
         _currentLayerName.isEmpty ? defaultLayerName ?? '' : _currentLayerName,
         shouldLayerBeVisible);

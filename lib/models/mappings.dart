@@ -143,7 +143,7 @@ class Mappings {
     return keyMappings[symbol] ?? symbol;
   }
 
-  static String? getShiftedSymbol(String symbol) {
+  static String getShiftedSymbol(String symbol) {
     const Map<String, String> shiftedSymbols = {
       '`': '~',
       '1': '!',
@@ -171,13 +171,29 @@ class Mappings {
     return shiftedSymbols[symbol] ?? symbol;
   }
 
-  // AIDEV-NOTE: Human-friendly names for ZMK keys and macros
-  static String getDisplayName(
-      String zmkKey, Map<String, String>? actionMappings) {
+  // AIDEV-NOTE: Human-friendly names for ZMK keys and macros with shift mapping support
+  static String getDisplayName(String zmkKey, Map<String, String>? actionMappings,
+      {bool isShiftPressed = false, Map<String, String>? customShiftMappings}) {
     if (actionMappings != null && actionMappings.containsKey(zmkKey)) {
       // Don't return the action, just use this as indication this is a semantic key
       // The original zmkKey (like "Cut", "Copy") is already the display name we want
       return zmkKey;
+    }
+
+    // Apply custom shift mappings first if shift is pressed
+    if (isShiftPressed && customShiftMappings != null) {
+      final shiftedValue = customShiftMappings[zmkKey];
+      if (shiftedValue != null) {
+        return shiftedValue;
+      }
+    }
+
+    // Apply default shift mappings
+    if (isShiftPressed) {
+      final defaultShifted = getShiftedSymbol(zmkKey);
+      if (defaultShifted != zmkKey) {
+        return defaultShifted;
+      }
     }
 
     // Single character keys - return as uppercase

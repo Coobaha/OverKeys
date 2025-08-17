@@ -1,3 +1,4 @@
 [tools]
 
 flutter = { version = "latest" }
+dart = { version = "latest" }

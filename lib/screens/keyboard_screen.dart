@@ -65,6 +65,8 @@ class KeyboardScreen extends StatelessWidget {
   final Map<String, String>?
       actionMappings; // AIDEV-NOTE: Semantic actions to key combinations
   final UserConfig? config;
+  final bool
+      isShiftPressed; // AIDEV-NOTE: Current shift state for custom shift mappings
   final bool debugMode;
   final bool thumbDebugMode;
   final double?
@@ -124,6 +126,7 @@ class KeyboardScreen extends StatelessWidget {
     this.customShiftMappings,
     this.actionMappings,
     this.config,
+    this.isShiftPressed = false,
     this.debugMode = false,
     this.thumbDebugMode = false,
     this.maxLayoutWidth,
@@ -851,6 +854,8 @@ class KeyboardScreen extends StatelessWidget {
       isLastKeyFirstRow: isLastKeyFirstRow,
       spaceWidth: spaceWidth,
       autoSizeGroup: _getAutoSizeGroup(key),
+      isShiftPressed: isShiftPressed,
+      customShiftMappings: customShiftMappings,
     );
   }
 
@@ -897,8 +902,10 @@ class KeyboardScreen extends StatelessWidget {
       String? key, Color textColor, double fontSize, FontWeight fontWeight) {
     if (key == null) return const SizedBox.shrink();
 
-    // AIDEV-NOTE: Apply action mappings and display name processing
-    final displayText = Mappings.getDisplayName(key, actionMappings);
+    // AIDEV-NOTE: Apply action mappings and display name processing with shift state
+    final displayText = Mappings.getDisplayName(key, actionMappings,
+        isShiftPressed: isShiftPressed,
+        customShiftMappings: customShiftMappings);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
@@ -1258,7 +1265,6 @@ class KeyboardScreen extends StatelessWidget {
       }
       return false;
     }
-
     return rowIndex == 2 && (keyIndex == 3 || keyIndex == 6);
   }
 
