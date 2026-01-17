@@ -136,6 +136,11 @@ class ConfigService {
     return config.actionMappings;
   }
 
+  Future<CycleGroup?> getCycleGroup() async {
+    final config = await loadConfig();
+    return config.cycleGroup;
+  }
+
   Future<UserConfig?> getConfig() async {
     return await loadConfig();
   }
@@ -149,5 +154,11 @@ class ConfigService {
     }
 
     return layers;
+  }
+
+  /// Get all user layouts (including those without triggers, for cycle group)
+  Future<List<KeyboardLayout>?> getAllUserLayouts() async {
+    final config = await loadConfig();
+    return config.userLayouts;
   }
 }

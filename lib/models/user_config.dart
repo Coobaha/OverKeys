@@ -1,6 +1,22 @@
 import 'dart:math' as math;
 import 'keyboard_layouts.dart';
 
+class CycleGroup {
+  final String trigger;
+  final List<String> layers;
+
+  const CycleGroup({required this.trigger, required this.layers});
+
+  factory CycleGroup.fromJson(Map<String, dynamic> json) {
+    return CycleGroup(
+      trigger: json['trigger'] as String,
+      layers: List<String>.from(json['layers']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'trigger': trigger, 'layers': layers};
+}
+
 class UserConfig {
   String? defaultUserLayout;
   String? altLayout;
@@ -15,6 +31,7 @@ class UserConfig {
   // AIDEV-NOTE: Smart visibility delays in milliseconds
   double? customLayerDelay;
   double? defaultLayerDelay;
+  CycleGroup? cycleGroup;
 
   UserConfig({
     this.defaultUserLayout,
@@ -29,6 +46,7 @@ class UserConfig {
     this.homeRow,
     this.customLayerDelay,
     this.defaultLayerDelay,
+    this.cycleGroup,
   })  : customShiftMappings = customShiftMappings ?? {},
         actionMappings = actionMappings ?? {};
 
@@ -176,6 +194,11 @@ class UserConfig {
       actionMappings = Map<String, String>.from(json['actionMappings']);
     }
 
+    CycleGroup? cycleGroup;
+    if (json['cycleGroup'] != null) {
+      cycleGroup = CycleGroup.fromJson(json['cycleGroup']);
+    }
+
     return UserConfig(
       defaultUserLayout: json['defaultUserLayout'],
       altLayout: json['altLayout'],
@@ -191,6 +214,7 @@ class UserConfig {
           json['layerShowDelay']?.toDouble(),
       defaultLayerDelay: json['defaultLayerDelay']?.toDouble() ??
           json['defaultUserLayoutShowDelay']?.toDouble(),
+      cycleGroup: cycleGroup,
     );
   }
 
@@ -227,6 +251,7 @@ class UserConfig {
       if (homeRow != null) 'homeRow': homeRow,
       if (customLayerDelay != null) 'customLayerDelay': customLayerDelay,
       if (defaultLayerDelay != null) 'defaultLayerDelay': defaultLayerDelay,
+      if (cycleGroup != null) 'cycleGroup': cycleGroup!.toJson(),
     };
   }
 }

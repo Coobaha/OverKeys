@@ -71,6 +71,12 @@ class SmartVisibilityManager {
   // AIDEV-NOTE: Stack-based layer state management for proper restoration
   final List<LayerState> _layerStack = [];
 
+  // Cycle trigger state
+  List<String> _cycleLayers = [];
+  String? _cycleTrigger;
+  int _cycleIndex = -1; // -1 means not cycling, will start at last or 0
+  String? _lastActiveLayer; // Track last manually activated layer for cycle start
+
   final Function(bool visible)? onVisibilityChange;
   final Function(KeyboardLayout layout)? onLayerChange;
   final Function(bool hasActiveTimer)? onTimerStateChange;
@@ -133,6 +139,13 @@ class SmartVisibilityManager {
   /// Set the default layer name for comparison
   void setDefaultLayer(String? defaultLayerName) {
     _defaultLayerName = defaultLayerName;
+  }
+
+  /// Configure cycle group for layer cycling
+  void setCycleGroup(String? trigger, List<String>? layers) {
+    _cycleTrigger = trigger;
+    _cycleLayers = layers ?? [];
+    _cycleIndex = -1;
   }
 
   /// Register a layer in the layer registry
@@ -807,6 +820,7 @@ class SmartVisibilityManager {
   /// High-level unified key event handling
   KeyEventResult handleKeyEvent({
     required String key,
+    required String rawKey,
     required bool isPressed,
     required Map<String, String> triggers,
     required bool useUserLayouts,
@@ -832,7 +846,7 @@ class SmartVisibilityManager {
         final trigger = entry.value;
         if (trigger.isNotEmpty &&
             _matchesTriggerKey(
-              key,
+              rawKey,
               trigger,
               isShiftDown: isShiftDown,
               isCtrlDown: isCtrlDown,
@@ -855,7 +869,7 @@ class SmartVisibilityManager {
 
     // Handle key press events
     bool shouldConsume = shouldConsumeEvent(
-      key,
+      rawKey,
       isPressed,
       triggers,
       isShiftDown: isShiftDown,
@@ -864,12 +878,34 @@ class SmartVisibilityManager {
       isCmdDown: isCmdDown,
     );
 
+    // Check for cycle trigger first
+    if (_cycleTrigger != null &&
+        _cycleLayers.isNotEmpty &&
+        _matchesTriggerKey(
+          rawKey,
+          _cycleTrigger!,
+          isShiftDown: isShiftDown,
+          isCtrlDown: isCtrlDown,
+          isAltDown: isAltDown,
+          isCmdDown: isCmdDown,
+        )) {
+      final transition = handleCycleTrigger(
+        defaultLayerName: defaultLayerName,
+        isWindowVisible: isWindowVisible,
+      );
+      return KeyEventResult(
+        shouldConsume: true,
+        transition: transition,
+        shouldShow: transition.shouldShow,
+      );
+    }
+
     // Check for layer triggers
     for (final entry in triggers.entries) {
       final trigger = entry.value;
       if (trigger.isNotEmpty &&
           _matchesTriggerKey(
-            key,
+            rawKey,
             trigger,
             isShiftDown: isShiftDown,
             isCtrlDown: isCtrlDown,
@@ -930,6 +966,7 @@ class SmartVisibilityManager {
     if (_isInToggledLayer && _currentLayerName == layerName) {
       _isInToggledLayer = false;
       _layerSuppressed = false;
+      _cycleIndex = -1; // Reset cycle on layer off
 
       // Pop previous state from stack
       final previousState = _popLayerState();
@@ -990,6 +1027,8 @@ class SmartVisibilityManager {
 
     _isInToggledLayer = true;
     _currentLayerName = layerName;
+    _lastActiveLayer = layerName; // Track for cycle trigger
+    _cycleIndex = -1; // Reset cycle on manual layer activation
     _layerSuppressed = false;
     _ignoreNextKeypress = true;
 
@@ -1012,6 +1051,78 @@ class SmartVisibilityManager {
       shouldStartTimer: true,
       shouldShow: false, // Never show immediately - always use timer
       useSmartVisibility: true, // Flag to use SmartVisibilityManager
+    );
+  }
+
+  /// Handle cycle trigger - shows last layer first, then cycles through configured layers
+  LayerTransition handleCycleTrigger({
+    String? defaultLayerName,
+    required bool isWindowVisible,
+  }) {
+    _cancelAllTimers();
+
+    if (_cycleLayers.isEmpty) {
+      return LayerTransition(
+        type: LayerTransitionType.none,
+        targetLayerName: _currentLayerName,
+        layout: _currentLayout,
+        shouldFadeOut: false,
+        shouldStartTimer: false,
+        shouldShow: false,
+        useSmartVisibility: false,
+      );
+    }
+
+    String targetLayerName;
+
+    if (_cycleIndex == -1) {
+      // First press - show last active layer or first in cycle list
+      if (_lastActiveLayer != null && _cycleLayers.contains(_lastActiveLayer)) {
+        targetLayerName = _lastActiveLayer!;
+        _cycleIndex = _cycleLayers.indexOf(_lastActiveLayer!);
+      } else {
+        targetLayerName = _cycleLayers.first;
+        _cycleIndex = 0;
+      }
+    } else {
+      // Subsequent press - cycle to next layer
+      _cycleIndex = (_cycleIndex + 1) % _cycleLayers.length;
+      targetLayerName = _cycleLayers[_cycleIndex];
+    }
+
+    if (kDebugMode && debugEnabled) {
+      debugPrint(
+          '🔄 Smart Visibility: Cycle to $targetLayerName (index: $_cycleIndex/${_cycleLayers.length})');
+    }
+
+    // Use toggle layer logic but don't push to stack on repeated cycles
+    final shouldLayerBeVisible =
+        !_forceHidden && (_isInToggledLayer || isWindowVisible);
+
+    if (!_isInToggledLayer) {
+      // First cycle activation - push current state
+      _pushLayerState(
+          _currentLayerName.isEmpty ? defaultLayerName ?? '' : _currentLayerName,
+          shouldLayerBeVisible);
+    }
+
+    _isInToggledLayer = true;
+    _currentLayerName = targetLayerName;
+    _lastActiveLayer = targetLayerName;
+    _layerSuppressed = false;
+    _ignoreNextKeypress = true;
+
+    final targetLayout = _layerRegistry[targetLayerName];
+    _currentLayout = targetLayout;
+
+    return LayerTransition(
+      type: LayerTransitionType.turnOn,
+      targetLayerName: targetLayerName,
+      layout: targetLayout,
+      shouldFadeOut: isWindowVisible,
+      shouldStartTimer: true,
+      shouldShow: false,
+      useSmartVisibility: true,
     );
   }
 
@@ -1192,6 +1303,7 @@ class LayerTransition {
 }
 
 enum LayerTransitionType {
+  none,
   turnOn,
   turnOff,
   held,

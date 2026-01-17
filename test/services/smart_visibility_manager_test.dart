@@ -240,6 +240,7 @@ void main() {
       // Toggle layer activation
       final result1 = manager.handleKeyEvent(
         key: 'F19',
+        rawKey: 'F19',
         isPressed: true,
         triggers: triggers,
         useUserLayouts: true,
@@ -261,6 +262,7 @@ void main() {
       // Toggle same layer OFF
       final result2 = manager.handleKeyEvent(
         key: 'F19',
+        rawKey: 'F19',
         isPressed: true,
         triggers: triggers,
         useUserLayouts: true,

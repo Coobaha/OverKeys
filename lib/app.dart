@@ -234,7 +234,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   late final KeyRenderCache _renderCache;
   Map<String, String>? _customShiftMappings;
   Map<String, String>? _actionMappings;
-  List<KeyboardLayout> _userLayers = [];
+  List<KeyboardLayout> _userLayers = []; // Layers with triggers
+  List<KeyboardLayout> _allUserLayouts = []; // All user layouts for layer selector
   UserConfig? _userConfig;
   bool _isShiftPressed = false; // AIDEV-NOTE: Global shift state for custom shift mappings
 
@@ -763,21 +764,33 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
     final configService = ConfigService();
     final layers = await configService.getUserLayers() ?? [];
+    final allLayouts = await configService.getAllUserLayouts() ?? [];
 
     setState(() {
       _userLayers = layers;
+      _allUserLayouts = allLayouts;
       // AIDEV-NOTE: Invalidate cached widths when user layers change
       _cachedMaxLayoutWidth = null;
       _cachedMaxLeftHandWidth = null;
       _cachedMaxRightHandWidth = null;
     });
 
-    // Register all user layers with SmartVisibilityManager
-    for (final layer in layers) {
-      _smartVisibilityManager.registerLayer(layer.name, layer);
+    // Register all user layouts with SmartVisibilityManager
+    for (final layout in allLayouts) {
+      _smartVisibilityManager.registerLayer(layout.name, layout);
       if (kDebugMode && _debugModeEnabled) {
         debugPrint(
-            '🔧 Smart Visibility: Registered user layer "${layer.name}"');
+            '🔧 Smart Visibility: Registered user layout "${layout.name}"');
+      }
+    }
+
+    // Load cycle group configuration
+    final cycleGroup = await configService.getCycleGroup();
+    if (cycleGroup != null) {
+      _smartVisibilityManager.setCycleGroup(cycleGroup.trigger, cycleGroup.layers);
+      if (kDebugMode && _debugModeEnabled) {
+        debugPrint(
+            '🔧 Smart Visibility: Configured cycle group with trigger "${cycleGroup.trigger}" and layers: ${cycleGroup.layers}');
       }
     }
 
@@ -913,8 +926,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       if (_cachedMaxLayoutWidth == null) {
         double maxTotalLayoutWidth = 0.0;
 
-        // Create list of all layouts to check (all user layers only)
-        List<KeyboardLayout> allLayouts = _userLayers
+        // Create list of all layouts to check (all user layouts, not just triggered ones)
+        List<KeyboardLayout> allLayouts = _allUserLayouts
             .where((layer) => layer.leftHand != null && layer.rightHand != null)
             .toList();
 
@@ -1181,6 +1194,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     }
 
     String key;
+    String rawKey; // Unshifted key name for trigger matching
     bool isPressed;
     bool isShiftDown = false;
     bool isCtrlDown = false;
@@ -1203,11 +1217,13 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         isCmdDown = modifiers['cmd'] ?? false;
       }
 
+      rawKey = keyName.toUpperCase();
       key = getKeyFromStringKeyShift(keyName, isShiftDown);
     } else if (message[0] is int) {
       final keyCode = message[0] as int;
       isPressed = message[1] as bool;
       isShiftDown = message[2] as bool;
+      rawKey = getKeyFromKeyCodeShift(keyCode, false);
       key = getKeyFromKeyCodeShift(keyCode, isShiftDown);
     } else {
       return false;
@@ -1252,6 +1268,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     // AIDEV-NOTE: Use unified SmartVisibilityManager key handling
     final result = _smartVisibilityManager.handleKeyEvent(
       key: key,
+      rawKey: rawKey,
       isPressed: isPressed,
       triggers: _getTriggers(),
       useUserLayouts: _useUserLayout,
@@ -1353,21 +1370,13 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   // AIDEV-NOTE: Layer switching functionality for mouse-based layer selection
   List<KeyboardLayout> _getAvailableLayers() {
-    List<KeyboardLayout> layers = [];
-
-    // AIDEV-NOTE: Add user custom layouts first to prioritize them in dropdown
-    if (_userLayers.isNotEmpty) {
-      layers.addAll(_userLayers);
+    // Only show user layouts when user layout mode is enabled
+    if (_useUserLayout && _allUserLayouts.isNotEmpty) {
+      return _allUserLayouts;
     }
 
-    // Add base layouts for layer switching, avoiding duplicates by name
-    for (final baseLayout in availableLayouts) {
-      if (!layers.any((layer) => layer.name == baseLayout.name)) {
-        layers.add(baseLayout);
-      }
-    }
-
-    return layers;
+    // Fallback to base layouts only if no user layouts
+    return availableLayouts;
   }
 
   void _switchToLayer(KeyboardLayout newLayer) {
