@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:overkeys/services/multi_window_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
@@ -10,6 +11,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:overkeys/utils/theme_manager.dart';
 import 'package:overkeys/services/preferences_service.dart';
+import 'package:overkeys/services/config_service.dart';
 import 'package:overkeys/widgets/tabs/general_tab.dart';
 import 'package:overkeys/widgets/tabs/keyboard_tab.dart';
 import 'package:overkeys/widgets/tabs/text_tab.dart';
@@ -189,8 +191,9 @@ class _PreferencesScreenState extends State<PreferencesScreen>
     super.dispose();
   }
 
-  void _setupMethodHandler() {
-    DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+  Future<void> _setupMethodHandler() async {
+    await MultiWindowService.instance.initialize(isMainWindow: false);
+    await MultiWindowService.instance.setMethodHandler((call) async {
       if (call.method == 'getWindowType') {
         return jsonEncode({'type': 'preferences'});
       }
@@ -416,7 +419,6 @@ class _PreferencesScreenState extends State<PreferencesScreen>
   }
 
   void _updateMainWindow(dynamic method, dynamic value) async {
-    // AIDEV-NOTE: Add error handling to prevent tab navigation crashes
     try {
       if (value is Color) {
         value = value.toARGB32();
@@ -425,12 +427,15 @@ class _PreferencesScreenState extends State<PreferencesScreen>
       } else if (value is HotKey) {
         value = jsonEncode(value.toJson());
       }
-      await DesktopMultiWindow.invokeMethod(0, method, value);
-      await _savePreferences();
+      // Use method channel via desktop_multi_window to communicate with main window
+      final windows = await WindowController.getAll();
+      // Find main window (the one without 'preferences' argument)
+      final mainWindow = windows.where((w) => w.arguments != 'preferences').firstOrNull;
+      if (mainWindow != null) {
+        await mainWindow.invokeMethod(method, value);
+      }
     } catch (e) {
       debugPrint('Error updating main window: $e');
-      // Continue with local save even if main window update fails
-      await _savePreferences();
     }
   }
 
@@ -1001,6 +1006,11 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           updateKeyboardFollowsMouse: (value) {
             setState(() => _keyboardFollowsMouse = value);
             _updateMainWindow('updateKeyboardFollowsMouse', value);
+          },
+          onReloadConfig: () async {
+            debugPrint('Preferences: signaling config reload...');
+            await ConfigService().signalReload();
+            debugPrint('Preferences: reload signal sent');
           },
         );
       case 'About':

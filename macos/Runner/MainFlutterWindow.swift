@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import desktop_multi_window
 
 class MainFlutterWindow: NSWindow {
   private var keyboardMonitor: KeyboardMonitor?
@@ -37,7 +38,12 @@ class MainFlutterWindow: NSWindow {
     }
 
     RegisterGeneratedPlugins(registry: flutterViewController)
-    
+
+    // AIDEV-NOTE: Register plugins for sub-windows created by desktop_multi_window
+    FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in
+      RegisterGeneratedPlugins(registry: controller)
+    }
+
     // AIDEV-NOTE: Debug transparency configuration (only in debug builds)
     #if DEBUG
     print("🔍 MainFlutterWindow transparency configured:")

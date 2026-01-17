@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:overkeys/services/multi_window_service.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -207,6 +208,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   bool _kanataEnabled = false;
   bool _keyboardFollowsMouse = false;
   Timer? _mouseCheckTimer;
+  Timer? _configReloadCheckTimer;
 
   // Smart visibility manager
   late SmartVisibilityManager _smartVisibilityManager;
@@ -314,6 +316,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     _setupMethodHandler();
     _initStartup();
     _setupKanataLayerChangeHandler();
+    _setupConfigReloadChecker();
     // Window size adjustment now happens in _loadAllPreferences() before position restoration
     // Auto-hide now handled by SmartVisibilityManager
     Future.delayed(const Duration(milliseconds: 100), () async {
@@ -348,6 +351,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     // Auto-hide timer moved to SmartVisibilityManager
     _overlayTimer?.cancel();
     _mouseCheckTimer?.cancel();
+    _configReloadCheckTimer?.cancel();
     _smartVisibilityManager.dispose();
     _kanataService.dispose();
     _keyboardService?.dispose();
@@ -1320,12 +1324,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     );
 
     // Handle multi-window notification
-    DesktopMultiWindow.getAllSubWindowIds().then((windowIds) {
-      for (final id in windowIds) {
-        DesktopMultiWindow.invokeMethod(
-            id, 'updateAutoHideFromMainWindow', enable);
-      }
-    });
+    MultiWindowService.instance
+        .invokeMethodOnAllSubWindows('updateAutoHideFromMainWindow', enable);
   }
 
   void _adjustOpacity(bool increase) {
@@ -1346,12 +1346,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _opacityDebounceTimer?.cancel();
       _opacityDebounceTimer = Timer(const Duration(milliseconds: 125), () {
         _saveAllPreferences();
-        DesktopMultiWindow.getAllSubWindowIds().then((windowIds) {
-          for (final id in windowIds) {
-            DesktopMultiWindow.invokeMethod(
-                id, 'updateOpacity', {'opacity': newOpacity});
-          }
-        });
+        MultiWindowService.instance
+            .invokeMethodOnAllSubWindows('updateOpacity', {'opacity': newOpacity});
       });
     }
   }
@@ -1634,9 +1630,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     }
 
     if (menuItem.key == 'exit') {
-      DesktopMultiWindow.getAllSubWindowIds().then((windowIds) async {
-        for (final id in windowIds) {
-          await WindowController.fromWindowId(id).close();
+      MultiWindowService.instance.getAllSubWindows().then((controllers) async {
+        for (final controller in controllers) {
+          await controller.close();
         }
         await windowManager.close();
         exit(0);
@@ -1723,39 +1719,44 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   }
 
   bool _preferencesLaunching = false;
-  Process? _preferencesProcess;
+  WindowController? _preferencesController;
 
   Future<void> _showPreferences() async {
     try {
-      // Check if preferences process is already running
-      if (_preferencesProcess != null) {
-        // Process exists, don't create another window
+      // Check if preferences window already exists
+      if (_preferencesController != null) {
+        // Try to focus existing window
+        await _preferencesController!.show();
         return;
       }
 
-      // Check if we're already launching
       if (_preferencesLaunching) {
         return;
       }
 
       _preferencesLaunching = true;
 
-      // Launch preferences as a separate process (original working approach)
-      final process = await Process.start(
-        Platform.resolvedExecutable,
-        ['preferences'],
-        runInShell: false,
-        environment: Platform.environment,
+      // Create preferences window using desktop_multi_window
+      final controller = await WindowController.create(
+        WindowConfiguration(
+          hiddenAtLaunch: true,
+          arguments: 'preferences',
+        ),
       );
 
-      // Track this process
-      _preferencesProcess = process;
+      _preferencesController = controller;
 
-      // Clean up when process exits
-      process.exitCode.then((exitCode) {
-        _preferencesProcess = null;
-        _preferencesLaunching = false;
+      // Listen for window close
+      onWindowsChanged.listen((_) async {
+        final windows = await WindowController.getAll();
+        final exists = windows.any((w) => w.windowId == controller.windowId);
+        if (!exists) {
+          _preferencesController = null;
+        }
       });
+
+      // Show and configure the window
+      await controller.show();
 
       _preferencesLaunching = false;
     } catch (e) {
@@ -1763,11 +1764,34 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         debugPrint('Error launching preferences: $e');
       }
       _preferencesLaunching = false;
+      _preferencesController = null;
     }
   }
 
-  void _setupMethodHandler() {
-    DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+  void _setupConfigReloadChecker() {
+    final configService = ConfigService();
+    _configReloadCheckTimer =
+        Timer.periodic(const Duration(milliseconds: 100), (_) async {
+      // Check for config reload signal
+      final shouldReload = await configService.checkAndClearReloadSignal();
+      if (shouldReload) {
+        if (kDebugMode && _debugModeEnabled) {
+          debugPrint('Config reload signal detected, reloading...');
+        }
+        ConfigService.clearCache();
+        await _loadConfiguration();
+        _adjustWindowSize();
+        setState(() {});
+        _showOverlay(
+            'Config reloaded', const Icon(LucideIcons.refreshCw));
+      }
+    });
+  }
+
+
+  Future<void> _setupMethodHandler() async {
+    await MultiWindowService.instance.initialize(isMainWindow: true);
+    await MultiWindowService.instance.setMethodHandler((call) async {
       switch (call.method) {
         // General settings
         case 'updateLaunchAtStartup':
@@ -1829,7 +1853,13 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           setState(() => _showGraveKey = showGraveKey);
         case 'updateKeySize':
           final keySize = call.arguments as double;
-          setState(() => _keySize = keySize);
+          setState(() {
+            _keySize = keySize;
+            _cachedMaxLayoutWidth = null;
+            _cachedMaxLeftHandWidth = null;
+            _cachedMaxRightHandWidth = null;
+          });
+          _adjustWindowSize();
         case 'updateKeyBorderRadius':
           final keyBorderRadius = call.arguments as double;
           setState(() => _keyBorderRadius = keyBorderRadius);
@@ -1838,16 +1868,35 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           setState(() => _keyBorderThickness = keyBorderThickness);
         case 'updateKeyPadding':
           final keyPadding = call.arguments as double;
-          setState(() => _keyPadding = keyPadding);
+          setState(() {
+            _keyPadding = keyPadding;
+            _cachedMaxLayoutWidth = null;
+            _cachedMaxLeftHandWidth = null;
+            _cachedMaxRightHandWidth = null;
+          });
+          _adjustWindowSize();
         case 'updateSpaceWidth':
           final spaceWidth = call.arguments as double;
-          setState(() => _spaceWidth = spaceWidth);
+          setState(() {
+            _spaceWidth = spaceWidth;
+            _cachedMaxLayoutWidth = null;
+            _cachedMaxLeftHandWidth = null;
+            _cachedMaxRightHandWidth = null;
+          });
+          _adjustWindowSize();
         case 'updateSplitWidth':
           final splitWidth = call.arguments as double;
-          setState(() => _splitWidth = splitWidth);
+          setState(() {
+            _splitWidth = splitWidth;
+            _cachedMaxLayoutWidth = null;
+            _cachedMaxLeftHandWidth = null;
+            _cachedMaxRightHandWidth = null;
+          });
+          _adjustWindowSize();
         case 'updateLastRowSplitWidth':
           final lastRowSplitWidth = call.arguments as double;
           setState(() => _lastRowSplitWidth = lastRowSplitWidth);
+          _adjustWindowSize();
         case 'updateKeyShadowBlurRadius':
           final keyShadowBlurRadius = call.arguments as double;
           setState(() => _keyShadowBlurRadius = keyShadowBlurRadius);
@@ -1910,15 +1959,13 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           setState(() => _keyTextColor = Color(keyTextColor));
         case 'updateKeyTextColorNotPressed':
           final keyTextColorNotPressed = call.arguments as int;
-          setState(
-              () => _keyTextColorNotPressed = Color(keyTextColorNotPressed));
+          setState(() => _keyTextColorNotPressed = Color(keyTextColorNotPressed));
         case 'updateKeyBorderColorPressed':
           final keyBorderColorPressed = call.arguments as int;
           setState(() => _keyBorderColorPressed = Color(keyBorderColorPressed));
         case 'updateKeyBorderColorNotPressed':
           final keyBorderColorNotPressed = call.arguments as int;
-          setState(() =>
-              _keyBorderColorNotPressed = Color(keyBorderColorNotPressed));
+          setState(() => _keyBorderColorNotPressed = Color(keyBorderColorNotPressed));
 
         // Animations settings
         case 'updateAnimationEnabled':
@@ -2157,11 +2204,29 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
             }
           });
 
+        case 'reloadConfig':
+          if (kDebugMode && _debugModeEnabled) {
+            debugPrint('reloadConfig: clearing cache and reloading...');
+          }
+          ConfigService.clearCache();
+          await _loadConfiguration();
+          if (kDebugMode && _debugModeEnabled) {
+            debugPrint('reloadConfig: config reloaded, userConfig metadata: ${_userConfig?.metadata}');
+          }
+          _adjustWindowSize();
+          setState(() {});
+
         case 'closePreferencesWindow':
-          await WindowController.fromWindowId(fromWindowId).close();
+          // Preferences window closes itself via windowManager
+          await windowManager.close();
           break;
         default:
-          throw UnimplementedError('Unimplemented method ${call.method}');
+          break;
+      }
+      // Save preferences and invalidate cache after any update
+      if (call.method.startsWith('update')) {
+        KeyRenderCache().invalidateCache(reason: 'Preference change');
+        _saveAllPreferences();
       }
       return null;
     });

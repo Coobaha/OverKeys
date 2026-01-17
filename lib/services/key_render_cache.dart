@@ -70,18 +70,20 @@ class KeyRenderCache {
         case 'grow':
           final scaleValue = 1 + 0.05 * animationScale;
           return Matrix4.identity()
-            ..scale(scaleValue)
-            ..translate(
+            ..scaleByDouble(scaleValue, scaleValue, 1.0, 1.0)
+            ..translateByDouble(
               -keySize * (scaleValue - 1) / (2 * scaleValue),
               -keySize * (scaleValue - 1) / (2 * scaleValue),
+              0.0, 1.0,
             );
         case 'shrink':
           final scaleValue = 1 - 0.05 * animationScale;
           return Matrix4.identity()
-            ..scale(scaleValue)
-            ..translate(
+            ..scaleByDouble(scaleValue, scaleValue, 1.0, 1.0)
+            ..translateByDouble(
               keySize * (1 - scaleValue) / (2 * scaleValue),
               keySize * (1 - scaleValue) / (2 * scaleValue),
+              0.0, 1.0,
             );
         default:
           return Matrix4.translationValues(0, 2 * animationScale, 0);

@@ -24,6 +24,7 @@ class AdvancedTab extends StatelessWidget {
   final Function(bool) updateUse6ColLayout;
   final Function(bool) updateKanataEnabled;
   final Function(bool) updateKeyboardFollowsMouse;
+  final Future<void> Function()? onReloadConfig;
 
   const AdvancedTab({
     super.key,
@@ -45,6 +46,7 @@ class AdvancedTab extends StatelessWidget {
     required this.updateUse6ColLayout,
     required this.updateKanataEnabled,
     required this.updateKeyboardFollowsMouse,
+    this.onReloadConfig,
   });
 
   @override
@@ -151,13 +153,13 @@ class AdvancedTab extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Open config file',
+                Text('Config file',
                     style: TextStyle(
                         color: colorScheme.onSurface,
                         fontWeight: FontWeight.w600,
                         fontSize: 16)),
                 Text(
-                  'Turn related advanced setting off then on again to apply changes.',
+                  'Edit config externally, then reload to apply changes.',
                   style: TextStyle(
                       color: colorScheme.onSurface.withAlpha(153),
                       fontSize: 14.0),
@@ -168,53 +170,99 @@ class AdvancedTab extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
-          ElevatedButton.icon(
-            icon: Icon(LucideIcons.fileJson2,
-                color: colorScheme.primary, size: 24),
-            label: Text('Open',
-                style: TextStyle(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                )),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: colorScheme.surfaceContainerHighest,
-              elevation: 2,
-              minimumSize: const Size(100, 45),
-              side: BorderSide(color: colorScheme.primary),
-            ),
-            onPressed: () async {
-              try {
-                final configService = ConfigService();
-                final configPath = await configService.configPath;
-                final file = File(configPath);
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                icon: Icon(LucideIcons.fileJson2,
+                    color: colorScheme.primary, size: 24),
+                label: Text('Open',
+                    style: TextStyle(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    )),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.surfaceContainerHighest,
+                  elevation: 2,
+                  minimumSize: const Size(100, 45),
+                  side: BorderSide(color: colorScheme.primary),
+                ),
+                onPressed: () async {
+                  try {
+                    final configService = ConfigService();
+                    final configPath = await configService.configPath;
+                    final file = File(configPath);
 
-                if (!await file.exists()) {
-                  await configService.saveConfig(UserConfig());
-                }
+                    if (!await file.exists()) {
+                      await configService.saveConfig(UserConfig());
+                    }
 
-                // AIDEV-NOTE: Platform-specific file opening
-                if (Platform.isWindows) {
-                  await Process.start(
-                      'cmd.exe', ['/c', 'start', '', configPath]);
-                } else if (Platform.isMacOS) {
-                  await Process.start('open', [configPath]);
-                } else if (Platform.isLinux) {
-                  await Process.start('xdg-open', [configPath]);
-                }
-              } catch (e) {
-                debugPrint('Error opening config file: $e');
-                // Show user-friendly error
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Could not open config file: $e'),
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                    ),
-                  );
-                }
-              }
-            },
+                    if (Platform.isWindows) {
+                      await Process.start(
+                          'cmd.exe', ['/c', 'start', '', configPath]);
+                    } else if (Platform.isMacOS) {
+                      await Process.start('open', [configPath]);
+                    } else if (Platform.isLinux) {
+                      await Process.start('xdg-open', [configPath]);
+                    }
+                  } catch (e) {
+                    debugPrint('Error opening config file: $e');
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Could not open config file: $e'),
+                          backgroundColor: Theme.of(context).colorScheme.error,
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                icon: Icon(LucideIcons.refreshCw,
+                    color: colorScheme.primary, size: 24),
+                label: Text('Reload',
+                    style: TextStyle(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    )),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.surfaceContainerHighest,
+                  elevation: 2,
+                  minimumSize: const Size(100, 45),
+                  side: BorderSide(color: colorScheme.primary),
+                ),
+                onPressed: onReloadConfig != null
+                    ? () async {
+                        try {
+                          await onReloadConfig!();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text('Config reloaded'),
+                                backgroundColor: colorScheme.primary,
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          debugPrint('Error reloading config: $e');
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error reloading config: $e'),
+                                backgroundColor: colorScheme.error,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    : null,
+              ),
+            ],
           ),
         ],
       ),

@@ -8,17 +8,51 @@ import '../models/keyboard_layouts.dart';
 
 class ConfigService {
   static const String _configFileName = 'overkeys_config.json';
-  UserConfig? _cachedConfig;
+  static const String _reloadTriggerFileName = '.reload_trigger';
+  static UserConfig? _cachedConfig;
 
   Future<String> get _configPath async {
     final directory = await getApplicationSupportDirectory();
     return path.join(directory.path, _configFileName);
   }
 
+  Future<String> get _reloadTriggerPath async {
+    final directory = await getApplicationSupportDirectory();
+    return path.join(directory.path, _reloadTriggerFileName);
+  }
+
   Future<String> get configPath => _configPath;
 
-  Future<UserConfig> loadConfig() async {
-    if (_cachedConfig != null) {
+  static void clearCache() {
+    _cachedConfig = null;
+  }
+
+  /// Signal that config should be reloaded (for cross-process IPC)
+  Future<void> signalReload() async {
+    final triggerPath = await _reloadTriggerPath;
+    final file = File(triggerPath);
+    await file.writeAsString(DateTime.now().toIso8601String());
+  }
+
+  /// Check if reload was signaled and clear the trigger
+  Future<bool> checkAndClearReloadSignal() async {
+    final triggerPath = await _reloadTriggerPath;
+    final file = File(triggerPath);
+    if (await file.exists()) {
+      await file.delete();
+      return true;
+    }
+    return false;
+  }
+
+  /// Get the config directory path for file watching
+  Future<String> get configDirectoryPath async {
+    final directory = await getApplicationSupportDirectory();
+    return directory.path;
+  }
+
+  Future<UserConfig> loadConfig({bool forceReload = false}) async {
+    if (_cachedConfig != null && !forceReload) {
       return _cachedConfig!;
     }
 
@@ -34,6 +68,9 @@ class ConfigService {
         _cachedConfig = UserConfig();
         await saveConfig(_cachedConfig!);
       }
+    } on FormatException catch (e) {
+      debugPrint('Config parse error: $e');
+      rethrow;
     } catch (e) {
       debugPrint('Error loading config: $e');
       _cachedConfig = UserConfig();

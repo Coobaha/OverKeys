@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:desktop_multi_window/desktop_multi_window.dart';
 import '../models/keyboard_layouts.dart';
 
 /// Centralized smart visibility logic with comprehensive state management
@@ -662,7 +661,7 @@ class SmartVisibilityManager {
     bool increase, {
     required Function(String message, Icon icon) showOverlay,
     required Function() savePreferences,
-    required Function(List<int> windowIds, double opacity) updateMultiWindow,
+    required Function(double opacity) updateMultiWindow,
   }) {
     final oldOpacity = _opacity;
     adjustOpacity(increase);
@@ -807,13 +806,11 @@ class SmartVisibilityManager {
 
   /// Internal debounced save handling
   void _scheduleOpacitySave(
-      Function() savePrefs, Function(List<int>, double) updateWindows) {
+      Function() savePrefs, Function(double) updateWindows) {
     _opacitySaveTimer?.cancel();
     _opacitySaveTimer = Timer(const Duration(milliseconds: 125), () {
       savePrefs();
-      DesktopMultiWindow.getAllSubWindowIds().then((windowIds) {
-        updateWindows(windowIds, _opacity);
-      });
+      updateWindows(_opacity);
     });
   }
 
