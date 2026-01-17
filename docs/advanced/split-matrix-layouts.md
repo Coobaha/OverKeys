@@ -178,6 +178,106 @@ Set the `layoutStyle` field to control rendering:
 - `"matrix"`: Regular matrix layout
 - `"standard"`: Standard staggered layout
 
+## Physical Layout Configuration
+
+Configure column offsets and thumb cluster positioning to match your specific split keyboard's physical layout (Go60, Glove80, Voyager, Corne, etc.).
+
+### Column Offsets
+
+Apply vertical offsets per column to match the physical stagger of your keyboard:
+
+```jsonc
+{
+    "name": "My Layout",
+    "layoutStyle": "split_matrix_explicit",
+    "leftHand": { ... },
+    "rightHand": { ... },
+    "metadata": {
+        "columnOffsets": {
+            "left": {
+                "C1": 0,      // Inner column (index finger)
+                "C2": 0,
+                "C3": -10,    // Negative = shift up
+                "C4": -15,
+                "C5": -10,
+                "C6": 25      // Outer column (pinky) - positive = shift down
+            },
+            "right": {
+                "C1": 0,      // Inner column (index finger)
+                "C2": 0,
+                "C3": -10,
+                "C4": -15,
+                "C5": -10,
+                "C6": 25      // Outer column (pinky)
+            }
+        }
+    }
+}
+```
+
+Column numbering:
+- C1 = innermost column (index finger side)
+- C6 = outermost column (pinky side)
+- Values are percentage of key size (25 = 25% of keySize shifted down)
+
+### Thumb Cluster Positioning
+
+Configure the gap between thumb clusters and vertical offset from main keyboard:
+
+```jsonc
+"metadata": {
+    "thumbCluster": {
+        "gap": 20.0,           // Pixels between left/right thumb clusters
+        "verticalOffset": 10.0  // Pixels below the main keyboard rows
+    }
+}
+```
+
+Default values if not specified:
+- `gap`: 40% of the main split width
+- `verticalOffset`: 0 (flush with keyPadding)
+
+### Complete Example with Physical Configuration
+
+```jsonc
+{
+    "name": "Voyager Layout",
+    "layoutStyle": "split_matrix_explicit",
+    "leftHand": {
+        "mainRows": [
+            ["ESC", "1", "2", "3", "4", "5"],
+            ["TAB", "Q", "W", "E", "R", "T"],
+            ["CAPS", "A", "S", "D", "F", "G"],
+            ["SHIFT", "Z", "X", "C", "V", "B"]
+        ],
+        "thumbRows": [
+            ["SPACE", "BSPC"]
+        ]
+    },
+    "rightHand": {
+        "mainRows": [
+            ["6", "7", "8", "9", "0", "-"],
+            ["Y", "U", "I", "O", "P", "\\"],
+            ["H", "J", "K", "L", ";", "'"],
+            ["N", "M", ",", ".", "/", "SHIFT"]
+        ],
+        "thumbRows": [
+            ["ENTER", "SPACE"]
+        ]
+    },
+    "metadata": {
+        "columnOffsets": {
+            "left": { "C5": 15, "C6": 30 },
+            "right": { "C5": 15, "C6": 30 }
+        },
+        "thumbCluster": {
+            "gap": 40,
+            "verticalOffset": 5
+        }
+    }
+}
+```
+
 ## Advanced Features
 
 ### Action Mappings

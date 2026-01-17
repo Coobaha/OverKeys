@@ -32,6 +32,7 @@ class UserConfig {
   double? customLayerDelay;
   double? defaultLayerDelay;
   CycleGroup? cycleGroup;
+  Map<String, dynamic>? metadata; // Global physical keyboard config (columnOffsets, thumbCluster)
 
   UserConfig({
     this.defaultUserLayout,
@@ -47,6 +48,7 @@ class UserConfig {
     this.customLayerDelay,
     this.defaultLayerDelay,
     this.cycleGroup,
+    this.metadata,
   })  : customShiftMappings = customShiftMappings ?? {},
         actionMappings = actionMappings ?? {};
 
@@ -215,6 +217,7 @@ class UserConfig {
       defaultLayerDelay: json['defaultLayerDelay']?.toDouble() ??
           json['defaultUserLayoutShowDelay']?.toDouble(),
       cycleGroup: cycleGroup,
+      metadata: json['metadata'] as Map<String, dynamic>?,
     );
   }
 
@@ -252,6 +255,7 @@ class UserConfig {
       if (customLayerDelay != null) 'customLayerDelay': customLayerDelay,
       if (defaultLayerDelay != null) 'defaultLayerDelay': defaultLayerDelay,
       if (cycleGroup != null) 'cycleGroup': cycleGroup!.toJson(),
+      if (metadata != null) 'metadata': metadata,
     };
   }
 }

@@ -43,6 +43,10 @@
             "C5": 25.0,
             "C6": 25.0
           }
+        },
+        "thumbCluster": {
+          "gap": 20.0,
+          "verticalOffset": 10.0
         }
       }
     }

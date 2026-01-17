@@ -236,6 +236,7 @@ class KeyboardScreen extends StatelessWidget {
       thumbClusterWidget = buildThumbCluster(layout.thumbCluster!);
     }
 
+    double thumbVerticalOffset = _getThumbClusterVerticalOffset();
     return SingleChildScrollView(
       padding: EdgeInsets.all(keyPadding),
       child: Column(
@@ -244,7 +245,7 @@ class KeyboardScreen extends StatelessWidget {
         children: [
           ...mainRows,
           if (thumbClusterWidget != null) ...[
-            SizedBox(height: keyPadding),
+            SizedBox(height: keyPadding + thumbVerticalOffset),
             thumbClusterWidget,
             SizedBox(height: keyPadding * 2),
           ],
@@ -273,14 +274,15 @@ class KeyboardScreen extends StatelessWidget {
       thumbClusterWidget = buildThumbCluster(layout.thumbCluster!);
     }
 
-    // AIDEV-NOTE: Use fixed-width container to prevent layout shifting when switching layers
+    // Use fixed-width container to prevent layout shifting when switching layers
+    double thumbVerticalOffset = _getThumbClusterVerticalOffset();
     Widget content = Column(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
         ...mainRows,
         if (thumbClusterWidget != null) ...[
-          SizedBox(height: keyPadding),
+          SizedBox(height: keyPadding + thumbVerticalOffset),
           thumbClusterWidget,
           SizedBox(height: keyPadding * 2),
         ],
@@ -508,8 +510,8 @@ class KeyboardScreen extends StatelessWidget {
   }
 
   Widget buildThumbCluster(ThumbCluster thumbCluster) {
-    // AIDEV-NOTE: Anatomical thumb positioning - thumbs naturally reach inward toward center
-    double thumbGap = splitWidth * 0.4; // Much closer than main keyboard split
+    // Use configured thumb gap from metadata, or default to 40% of split width
+    double thumbGap = _getThumbClusterGap();
 
     Widget thumbWidget = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -962,12 +964,17 @@ class KeyboardScreen extends StatelessWidget {
     return 9; // Fallback for unknown positions
   }
 
-  // AIDEV-NOTE: Calculates vertical offset for left hand columns based on layout configuration
+  // Gets effective metadata - checks layout first, then falls back to global config
+  Map<String, dynamic>? _getEffectiveMetadata() {
+    if (layout.metadata != null) return layout.metadata;
+    return config?.metadata;
+  }
+
+  // Calculates vertical offset for left hand columns
   double _getLeftColumnOffset(int columnIndex, int totalColumns) {
-    // Check if layout has column offset configuration in metadata
-    if (layout.metadata != null && layout.metadata!['columnOffsets'] != null) {
-      final columnOffsets =
-          layout.metadata!['columnOffsets'] as Map<String, dynamic>;
+    final metadata = _getEffectiveMetadata();
+    if (metadata != null && metadata['columnOffsets'] != null) {
+      final columnOffsets = metadata['columnOffsets'] as Map<String, dynamic>;
       final leftOffsets = columnOffsets['left'] as Map<String, dynamic>?;
 
       if (leftOffsets != null) {
@@ -981,15 +988,14 @@ class KeyboardScreen extends StatelessWidget {
       }
     }
 
-    return 0.0; // No offset if not configured
+    return 0.0;
   }
 
-  // AIDEV-NOTE: Calculates vertical offset for right hand columns based on layout configuration
+  // Calculates vertical offset for right hand columns
   double _getRightColumnOffset(int columnIndex, int totalColumns) {
-    // Check if layout has column offset configuration in metadata
-    if (layout.metadata != null && layout.metadata!['columnOffsets'] != null) {
-      final columnOffsets =
-          layout.metadata!['columnOffsets'] as Map<String, dynamic>;
+    final metadata = _getEffectiveMetadata();
+    if (metadata != null && metadata['columnOffsets'] != null) {
+      final columnOffsets = metadata['columnOffsets'] as Map<String, dynamic>;
       final rightOffsets = columnOffsets['right'] as Map<String, dynamic>?;
 
       if (rightOffsets != null) {
@@ -1003,18 +1009,17 @@ class KeyboardScreen extends StatelessWidget {
       }
     }
 
-    return 0.0; // No offset if not configured
+    return 0.0;
   }
 
-  // AIDEV-NOTE: Calculates maximum column offset to determine container height
+  // Calculates maximum column offset to determine container height
   double _getMaxColumnOffset() {
     double maxOffset = 0.0;
 
-    if (layout.metadata != null && layout.metadata!['columnOffsets'] != null) {
-      final columnOffsets =
-          layout.metadata!['columnOffsets'] as Map<String, dynamic>;
+    final metadata = _getEffectiveMetadata();
+    if (metadata != null && metadata['columnOffsets'] != null) {
+      final columnOffsets = metadata['columnOffsets'] as Map<String, dynamic>;
 
-      // Check left hand offsets
       final leftOffsets = columnOffsets['left'] as Map<String, dynamic>?;
       if (leftOffsets != null) {
         for (var value in leftOffsets.values) {
@@ -1023,7 +1028,6 @@ class KeyboardScreen extends StatelessWidget {
         }
       }
 
-      // Check right hand offsets
       final rightOffsets = columnOffsets['right'] as Map<String, dynamic>?;
       if (rightOffsets != null) {
         for (var value in rightOffsets.values) {
@@ -1036,7 +1040,31 @@ class KeyboardScreen extends StatelessWidget {
     return maxOffset;
   }
 
-  // AIDEV-NOTE: Calculate left hand width based on actual rendered key dimensions
+  // Gets thumb cluster gap from metadata or uses default
+  double _getThumbClusterGap() {
+    final metadata = _getEffectiveMetadata();
+    if (metadata != null && metadata['thumbCluster'] != null) {
+      final thumbConfig = metadata['thumbCluster'] as Map<String, dynamic>;
+      if (thumbConfig['gap'] != null) {
+        return thumbConfig['gap'].toDouble();
+      }
+    }
+    return splitWidth * 0.4; // Default: 40% of main split width
+  }
+
+  // Gets thumb cluster vertical offset from metadata
+  double _getThumbClusterVerticalOffset() {
+    final metadata = _getEffectiveMetadata();
+    if (metadata != null && metadata['thumbCluster'] != null) {
+      final thumbConfig = metadata['thumbCluster'] as Map<String, dynamic>;
+      if (thumbConfig['verticalOffset'] != null) {
+        return thumbConfig['verticalOffset'].toDouble();
+      }
+    }
+    return 0.0;
+  }
+
+  // Calculate left hand width based on actual rendered key dimensions
   double _calculateLeftHandWidth() {
     if (layout.leftHand == null) return 300.0; // Fallback for non-split layouts
 
