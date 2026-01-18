@@ -93,6 +93,20 @@ class MainFlutterWindow: NSWindow {
         } else {
           result(true) // Not needed on older macOS versions
         }
+      case "openAccessibilitySettings":
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+          NSWorkspace.shared.open(url)
+          result(nil)
+        } else {
+          result(FlutterError(code: "OPEN_FAILED", message: "Could not open accessibility settings", details: nil))
+        }
+      case "openInputMonitoringSettings":
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_InputMonitoring") {
+          NSWorkspace.shared.open(url)
+          result(nil)
+        } else {
+          result(FlutterError(code: "OPEN_FAILED", message: "Could not open input monitoring settings", details: nil))
+        }
       case "updateTriggerKeys":
         if let keys = call.arguments as? [String] {
           self?.keyboardMonitor?.updateTriggerKeys(keys)

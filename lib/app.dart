@@ -237,6 +237,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   final Map<String, String> _physicalKeyToVisualKey =
       {}; // Track physical->visual mapping
 
+  // Permission dialog state
+  bool _permissionDialogShown = false;
+
   // Add performance services
   late final KeyStateManager _keyStateManager;
   late final KeyRenderCache _renderCache;
@@ -346,7 +349,136 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         _isInitializing = false; // Mark initialization as complete
         // Don't set _isWindowVisible = true; - let SmartVisibilityManager control it
       });
+
+      // Check permissions after UI is ready (macOS only)
+      if (Platform.isMacOS && !_permissionDialogShown) {
+        _checkAndShowPermissionDialog();
+      }
     });
+  }
+
+  Future<void> _checkAndShowPermissionDialog() async {
+    if (_permissionDialogShown) return;
+
+    // Use existing service or create a temporary one for permission checks
+    final service = _keyboardService ?? KeyboardService.create();
+
+    final hasAccessibility = await service.checkAccessibilityPermissions();
+    final hasInputMonitoring = await service.checkInputMonitoringPermissions();
+
+    if (!hasAccessibility || !hasInputMonitoring) {
+      _permissionDialogShown = true;
+      if (mounted) {
+        _showPermissionDialog(
+          context,
+          hasAccessibility: hasAccessibility,
+          hasInputMonitoring: hasInputMonitoring,
+          keyboardService: service,
+        );
+      }
+    }
+  }
+
+  void _showPermissionDialog(
+    BuildContext context, {
+    required bool hasAccessibility,
+    required bool hasInputMonitoring,
+    required KeyboardService keyboardService,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF2D2D2D),
+        title: const Text(
+          'Permissions Required',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'OverKeys needs the following macOS permissions to function:',
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 16),
+              _buildPermissionItem(
+                'Accessibility',
+                'Required for global hotkeys and detecting keyboard input across all applications.',
+                hasAccessibility,
+              ),
+              const SizedBox(height: 12),
+              _buildPermissionItem(
+                'Input Monitoring',
+                'Required to monitor keyboard events and display which keys are pressed in real-time.',
+                hasInputMonitoring,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'After granting permissions, you may need to restart OverKeys for changes to take effect.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          if (!hasAccessibility)
+            TextButton(
+              onPressed: () async {
+                await keyboardService.openAccessibilitySettings();
+              },
+              child: const Text('Open Accessibility Settings'),
+            ),
+          if (!hasInputMonitoring)
+            TextButton(
+              onPressed: () async {
+                await keyboardService.openInputMonitoringSettings();
+              },
+              child: const Text('Open Input Monitoring Settings'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Dismiss'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionItem(String title, String description, bool granted) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          granted ? LucideIcons.checkCircle : LucideIcons.alertCircle,
+          color: granted ? Colors.green : Colors.orange,
+          size: 20,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: granted ? Colors.green : Colors.orange,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   @override

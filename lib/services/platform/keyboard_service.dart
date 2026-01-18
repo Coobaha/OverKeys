@@ -27,9 +27,21 @@ abstract class KeyboardService {
 
   /// Update the list of trigger keys that should be consumed
   Future<void> updateTriggerKeys(List<String> triggerKeys);
-  
+
   /// Update overlay visibility for Swift-side optimization
   Future<void> setOverlayVisible(bool visible);
+
+  /// Check accessibility permissions (macOS only, returns true on other platforms)
+  Future<bool> checkAccessibilityPermissions() async => true;
+
+  /// Check input monitoring permissions (macOS only, returns true on other platforms)
+  Future<bool> checkInputMonitoringPermissions() async => true;
+
+  /// Open accessibility settings (macOS only, no-op on other platforms)
+  Future<void> openAccessibilitySettings() async {}
+
+  /// Open input monitoring settings (macOS only, no-op on other platforms)
+  Future<void> openInputMonitoringSettings() async {}
 
   /// Dispose of any resources
   void dispose();
@@ -176,6 +188,7 @@ class _MacOSKeyboardService extends KeyboardService {
     }
   }
 
+  @override
   Future<bool> checkAccessibilityPermissions() async {
     try {
       final bool hasPermissions =
@@ -187,6 +200,7 @@ class _MacOSKeyboardService extends KeyboardService {
     }
   }
 
+  @override
   Future<bool> checkInputMonitoringPermissions() async {
     try {
       final bool hasPermissions =
@@ -195,6 +209,24 @@ class _MacOSKeyboardService extends KeyboardService {
     } on PlatformException catch (e) {
       debugPrint('Failed to check input monitoring permissions: ${e.message}');
       return false;
+    }
+  }
+
+  @override
+  Future<void> openAccessibilitySettings() async {
+    try {
+      await _channel.invokeMethod('openAccessibilitySettings');
+    } on PlatformException catch (e) {
+      debugPrint('Failed to open accessibility settings: ${e.message}');
+    }
+  }
+
+  @override
+  Future<void> openInputMonitoringSettings() async {
+    try {
+      await _channel.invokeMethod('openInputMonitoringSettings');
+    } on PlatformException catch (e) {
+      debugPrint('Failed to open input monitoring settings: ${e.message}');
     }
   }
 
