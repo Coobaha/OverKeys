@@ -1,5 +1,144 @@
 # Changelog
 
+## [0.4.0](https://github.com/Coobaha/OverKeys/compare/v0.3.0...v0.4.0) (2026-01-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* add support for user-defined keyboard layers ([#114](https://github.com/Coobaha/OverKeys/issues/114))
+
+### ✨ Features
+
+* add  status overlay for keyboard visibility ([a520b95](https://github.com/Coobaha/OverKeys/commit/a520b95f476b556f3fa6618d252a129d3a601403))
+* add animations on key press ([#66](https://github.com/Coobaha/OverKeys/issues/66)) ([74bb7cf](https://github.com/Coobaha/OverKeys/commit/74bb7cff5416094a16fcbb7a97ee728a0f12f6ec))
+* add animations settings in preferences window ([74bb7cf](https://github.com/Coobaha/OverKeys/commit/74bb7cff5416094a16fcbb7a97ee728a0f12f6ec))
+* add custom shift mappings in `overkeys_config.json` ([1cf6506](https://github.com/Coobaha/OverKeys/commit/1cf6506d7758cd77edf3a0d6d1bb24ffa91a33c7))
+* add drop shadow to keys ([#104](https://github.com/Coobaha/OverKeys/issues/104)) ([7d5fc4c](https://github.com/Coobaha/OverKeys/commit/7d5fc4c66ee4e2afd3667810f4053e5dbc59a866))
+* add ESC key tip in preferences window ([b22db49](https://github.com/Coobaha/OverKeys/commit/b22db494cd249bb390e745e666ac7ef92e52b02c))
+* add half increments to marker height ([2bca469](https://github.com/Coobaha/OverKeys/commit/2bca469a1ca1fabf3ea9ee4b9b539be8994afe6f))
+* add hotkeys for increasing/decreasing opacity ([#98](https://github.com/Coobaha/OverKeys/issues/98)) ([b5d7e65](https://github.com/Coobaha/OverKeys/commit/b5d7e65847deeec79b3a21114f7e5096b2a4b08f))
+* add hotkeys for toggling move and opening preferences ([536608d](https://github.com/Coobaha/OverKeys/commit/536608db5f6339f2df98d266f107bd9fb76f08cf))
+* add hotkeys to tray menu label ([48c8bc6](https://github.com/Coobaha/OverKeys/commit/48c8bc604875f43d5630eea0e3d1e3e6ed70acfa))
+* add key borders to improve key visibility ([#72](https://github.com/Coobaha/OverKeys/issues/72)) ([6adfd6a](https://github.com/Coobaha/OverKeys/commit/6adfd6a83c5a08db0bc901eda1fd5b471a6176b3))
+* add keyboard follows mouse functionality ([#73](https://github.com/Coobaha/OverKeys/issues/73)) ([ce6644c](https://github.com/Coobaha/OverKeys/commit/ce6644c2b42dcef8414664b3da8bcc11d912c58b))
+* add lastRowSplitWidth settings for split matrix ([85ed250](https://github.com/Coobaha/OverKeys/commit/85ed2506a04803ec99b8636adf772c4455a67418))
+* add learning mode (overrides colors settings) ([#79](https://github.com/Coobaha/OverKeys/issues/79)) ([3989ea1](https://github.com/Coobaha/OverKeys/commit/3989ea1054e508f7701c9fe323905cec2b3fcbac))
+* add macOS platform integration ([b17753b](https://github.com/Coobaha/OverKeys/commit/b17753be73cc6d623429c620f3e829c23a825be5))
+* add more fonts to options ([836c230](https://github.com/Coobaha/OverKeys/commit/836c2302afdc34ea4b3dbf46b30dba95cbc98206))
+* add note for thumb key/s learning mode color customization ([fd1fb8e](https://github.com/Coobaha/OverKeys/commit/fd1fb8e82b7e36787393ba9f7f10803b97e9fc42))
+* add overkeys custom learn_mode picture by @MG240 ([#88](https://github.com/Coobaha/OverKeys/issues/88)) ([ae3f554](https://github.com/Coobaha/OverKeys/commit/ae3f554e6ef4263e35c4a63b96fcd6cc2ff7bb6f))
+* add reload config option to tray menu ([#99](https://github.com/Coobaha/OverKeys/issues/99)) ([48c8bc6](https://github.com/Coobaha/OverKeys/commit/48c8bc604875f43d5630eea0e3d1e3e6ed70acfa))
+* add status overlay for auto-hide ([a520b95](https://github.com/Coobaha/OverKeys/commit/a520b95f476b556f3fa6618d252a129d3a601403))
+* add status overlay for move ([a520b95](https://github.com/Coobaha/OverKeys/commit/a520b95f476b556f3fa6618d252a129d3a601403))
+* add status overlay for reset position ([a520b95](https://github.com/Coobaha/OverKeys/commit/a520b95f476b556f3fa6618d252a129d3a601403))
+* add status overlays for tray menu toggles and hotkeys ([#65](https://github.com/Coobaha/OverKeys/issues/65)) ([a520b95](https://github.com/Coobaha/OverKeys/commit/a520b95f476b556f3fa6618d252a129d3a601403))
+* add support for 6 column split keyboard layouts ([#61](https://github.com/Coobaha/OverKeys/issues/61)) ([85ed250](https://github.com/Coobaha/OverKeys/commit/85ed2506a04803ec99b8636adf772c4455a67418))
+* add support for 6 column split keyboards ([85ed250](https://github.com/Coobaha/OverKeys/commit/85ed2506a04803ec99b8636adf772c4455a67418))
+* add support for custom fonts ([#71](https://github.com/Coobaha/OverKeys/issues/71)) ([836c230](https://github.com/Coobaha/OverKeys/commit/836c2302afdc34ea4b3dbf46b30dba95cbc98206))
+* add support for custom keys in split matrix last row ([85ed250](https://github.com/Coobaha/OverKeys/commit/85ed2506a04803ec99b8636adf772c4455a67418))
+* add support for F13-F24 keys ([1ddf917](https://github.com/Coobaha/OverKeys/commit/1ddf9172ed02a82b7030723b4491e894d02e8563))
+* add support for reactive shifted keys ([#94](https://github.com/Coobaha/OverKeys/issues/94)) ([1cf6506](https://github.com/Coobaha/OverKeys/commit/1cf6506d7758cd77edf3a0d6d1bb24ffa91a33c7))
+* add support for user-defined keyboard layers ([#114](https://github.com/Coobaha/OverKeys/issues/114)) ([1ddf917](https://github.com/Coobaha/OverKeys/commit/1ddf9172ed02a82b7030723b4491e894d02e8563))
+* add window listener to try fixing focus behavior ([061485f](https://github.com/Coobaha/OverKeys/commit/061485fcf862f4bc63402874261803bcd5336310))
+* add window position persistence ([2b34a06](https://github.com/Coobaha/OverKeys/commit/2b34a069399d346c3e44f045625c1e042da87622))
+* added greek, russian, and arabic (language) layouts ([63b369e](https://github.com/Coobaha/OverKeys/commit/63b369e36107b21aeb8430ba6e0b2cc3160bf244))
+* added support for recognizing keypress states of foreign layouts([#122](https://github.com/Coobaha/OverKeys/issues/122)) ([63b369e](https://github.com/Coobaha/OverKeys/commit/63b369e36107b21aeb8430ba6e0b2cc3160bf244))
+* disable/enable specific hotkeys ([#95](https://github.com/Coobaha/OverKeys/issues/95)) ([b22db49](https://github.com/Coobaha/OverKeys/commit/b22db494cd249bb390e745e666ac7ef92e52b02c))
+* enhance preferences and project configuration ([12c62f9](https://github.com/Coobaha/OverKeys/commit/12c62f916947269cb8dcb2ff897162448b2c115a))
+* improve preferences window UI ([9da0734](https://github.com/Coobaha/OverKeys/commit/9da0734189d70b9cf8fe4ad36fb6ac2cf7bb46bf))
+* improve preferences window UI ([#60](https://github.com/Coobaha/OverKeys/issues/60)) ([9da0734](https://github.com/Coobaha/OverKeys/commit/9da0734189d70b9cf8fe4ad36fb6ac2cf7bb46bf))
+* new custom layout mode ([4c4bd0f](https://github.com/Coobaha/OverKeys/commit/4c4bd0f33ec84719d76e4bae7ca6a5639c57d0a0))
+* numpad keys now share state with regular keys ([#118](https://github.com/Coobaha/OverKeys/issues/118)) ([0d2856f](https://github.com/Coobaha/OverKeys/commit/0d2856f147e8cf1e819d64f69750a3c19c322920))
+* refactor and add more tabs to preferences ([9da0734](https://github.com/Coobaha/OverKeys/commit/9da0734189d70b9cf8fe4ad36fb6ac2cf7bb46bf))
+* restore focus to last active window on tray icon click ([6a469e6](https://github.com/Coobaha/OverKeys/commit/6a469e6ddfe231ed1ca59243c02744c20987fe7b))
+* show initial hotkey on hotkey recorder dialog open ([536608d](https://github.com/Coobaha/OverKeys/commit/536608db5f6339f2df98d266f107bd9fb76f08cf))
+* use ESC to close preferences window ([66ad129](https://github.com/Coobaha/OverKeys/commit/66ad129f3d0bb7fd3535da4de6a76a88ce896ddf))
+* use lucide icons ([9da0734](https://github.com/Coobaha/OverKeys/commit/9da0734189d70b9cf8fe4ad36fb6ac2cf7bb46bf))
+
+
+### 🐛 Bug Fixes
+
+* add debounce timer for opacity hotkey to remove visual lag ([#112](https://github.com/Coobaha/OverKeys/issues/112)) ([9df40b7](https://github.com/Coobaha/OverKeys/commit/9df40b761a066372c6f5c3f918c11b7f20c84553))
+* adjust key index handling for 6-column layout ([#110](https://github.com/Coobaha/OverKeys/issues/110)) ([9ccffd5](https://github.com/Coobaha/OverKeys/commit/9ccffd53c5b87c7fd80597ff8b5693c3da01405a))
+* advanced settings changes reflected without restarting ([#78](https://github.com/Coobaha/OverKeys/issues/78)) ([536608d](https://github.com/Coobaha/OverKeys/commit/536608db5f6339f2df98d266f107bd9fb76f08cf))
+* animate tactile markers together with key ([f2240be](https://github.com/Coobaha/OverKeys/commit/f2240beb320a6f2168304425464293e94006e55d))
+* apply learning mode color to grave key ([70060e0](https://github.com/Coobaha/OverKeys/commit/70060e004b9a0400d454dc6aee1d5ac64bcdd0c0))
+* auto-hide in prefs window now updates even when closed ([061485f](https://github.com/Coobaha/OverKeys/commit/061485fcf862f4bc63402874261803bcd5336310))
+* change blur style to normal ([3acd87c](https://github.com/Coobaha/OverKeys/commit/3acd87cb415e658129be343c29119724914a76d2))
+* color picker now uses hex rgb format ([6e04243](https://github.com/Coobaha/OverKeys/commit/6e0424390311d17603e0a05246caa91faa31fdf9))
+* correct icons for move enabled/disabled status overlays ([3989ea1](https://github.com/Coobaha/OverKeys/commit/3989ea1054e508f7701c9fe323905cec2b3fcbac))
+* disabled color picker copy/paste buttons and shortcuts causing errors ([6e04243](https://github.com/Coobaha/OverKeys/commit/6e0424390311d17603e0a05246caa91faa31fdf9))
+* force hide on tray icon click ([061485f](https://github.com/Coobaha/OverKeys/commit/061485fcf862f4bc63402874261803bcd5336310))
+* force single-instance of app ([061485f](https://github.com/Coobaha/OverKeys/commit/061485fcf862f4bc63402874261803bcd5336310))
+* force single-instance of preferences window ([061485f](https://github.com/Coobaha/OverKeys/commit/061485fcf862f4bc63402874261803bcd5336310))
+* improve force hide logic to not conflict with auto-hide ([a520b95](https://github.com/Coobaha/OverKeys/commit/a520b95f476b556f3fa6618d252a129d3a601403))
+* keyboard now remains hidden when auto-hide disabled ([0563c7c](https://github.com/Coobaha/OverKeys/commit/0563c7c2b2132df5e9c48116f883afff2dacf00f))
+* make modifiers default to left modifiers for now ([85ed250](https://github.com/Coobaha/OverKeys/commit/85ed2506a04803ec99b8636adf772c4455a67418))
+* only listen to layer changes if useUserLayout is true ([1ddf917](https://github.com/Coobaha/OverKeys/commit/1ddf9172ed02a82b7030723b4491e894d02e8563))
+* only shrink keys longer than length 2 ([#77](https://github.com/Coobaha/OverKeys/issues/77)) ([3f5dfab](https://github.com/Coobaha/OverKeys/commit/3f5dfab5693b313f79b255f595010fb33d96075a))
+* opacity hotkeys now only works when keyboard is visible ([56b2a7d](https://github.com/Coobaha/OverKeys/commit/56b2a7db62e80b42052856f064c8905d2e80fc0b))
+* reload config every connect to kanata call ([48c8bc6](https://github.com/Coobaha/OverKeys/commit/48c8bc604875f43d5630eea0e3d1e3e6ed70acfa))
+* revert to correct font family after reloading config and turning custom font off ([48c8bc6](https://github.com/Coobaha/OverKeys/commit/48c8bc604875f43d5630eea0e3d1e3e6ed70acfa))
+* revert to the defaultUserLayout after layer changes ([1ddf917](https://github.com/Coobaha/OverKeys/commit/1ddf9172ed02a82b7030723b4491e894d02e8563))
+* split matrix errors due to changing space width ([bfdc418](https://github.com/Coobaha/OverKeys/commit/bfdc41806b1096f5ce6f02bb7fa3144f37763d3f))
+* tray menu now disappears when clicking anywhere after menu pops up ([061485f](https://github.com/Coobaha/OverKeys/commit/061485fcf862f4bc63402874261803bcd5336310))
+* tray menu, window logic, and UI fixes ([#57](https://github.com/Coobaha/OverKeys/issues/57)) ([061485f](https://github.com/Coobaha/OverKeys/commit/061485fcf862f4bc63402874261803bcd5336310))
+* update alias mappings to reflect numpad keys behavior change ([0d2856f](https://github.com/Coobaha/OverKeys/commit/0d2856f147e8cf1e819d64f69750a3c19c322920))
+* update color picker behavior ([#93](https://github.com/Coobaha/OverKeys/issues/93)) ([6e04243](https://github.com/Coobaha/OverKeys/commit/6e0424390311d17603e0a05246caa91faa31fdf9))
+* update test infrastructure for MainApp ([8d5dfe7](https://github.com/Coobaha/OverKeys/commit/8d5dfe7138d7731cc6c8540f98e14e6ecd37c7ad))
+* use LucideIcons for open config button ([536608d](https://github.com/Coobaha/OverKeys/commit/536608db5f6339f2df98d266f107bd9fb76f08cf))
+
+
+### 📚 Documentation
+
+* add 6-column split matrix sample layout ([2f84394](https://github.com/Coobaha/OverKeys/commit/2f843944b2b51eb10029cd2839242b508e653bbf))
+* add custom font feature documentation ([f3ea673](https://github.com/Coobaha/OverKeys/commit/f3ea67342d4c983165d23b576c3e44448c446de6))
+* add custom shift mapping documentation ([6c84692](https://github.com/Coobaha/OverKeys/commit/6c846922d05cba3616bb7dc4a071ad7c741e4c2f))
+* add development setup and macOS port documentation ([cb3ecf3](https://github.com/Coobaha/OverKeys/commit/cb3ecf3c505cadf6496f48f0ac477ca3e412e427))
+* add development setup and macOS port documentation ([bb75972](https://github.com/Coobaha/OverKeys/commit/bb7597250e368253812522edd1c5fb1c3c8a3a88))
+* add key border and drop shadow settings ([8981dfd](https://github.com/Coobaha/OverKeys/commit/8981dfdec26f8488b317ff6ceeb61eb1978ddf34))
+* add keyboard shortcuts for increasing and decreasing opacity ([1d7306f](https://github.com/Coobaha/OverKeys/commit/1d7306f66829185cad067536c2f638a91a01ed26))
+* add more topic specific docs ([615d5e0](https://github.com/Coobaha/OverKeys/commit/615d5e03815e3dc317208a5f8efde840423955f5))
+* add note about thumb keys color setting in Learning Mode ([051bade](https://github.com/Coobaha/OverKeys/commit/051bade821fc5d287029686e4e19bed8719ff959))
+* add rendering optimization prompts and improve plans ([cb3ecf3](https://github.com/Coobaha/OverKeys/commit/cb3ecf3c505cadf6496f48f0ac477ca3e412e427))
+* add rendering optimization prompts and improve plans ([bb75972](https://github.com/Coobaha/OverKeys/commit/bb7597250e368253812522edd1c5fb1c3c8a3a88))
+* add sample config file ([ba4e765](https://github.com/Coobaha/OverKeys/commit/ba4e76550c2bcf78988b0ab61d7d63c6c68168f4))
+* add user-defined layers feature ([006334b](https://github.com/Coobaha/OverKeys/commit/006334b87e736226b2de6c79f98d14e6d5dca9ed))
+* code signing ([3066be7](https://github.com/Coobaha/OverKeys/commit/3066be7729fbdf0b2e0ed83043f795d32be06235))
+* complete prompt 2 - clean jj history analysis ([cb3ecf3](https://github.com/Coobaha/OverKeys/commit/cb3ecf3c505cadf6496f48f0ac477ca3e412e427))
+* complete prompt 2 - clean jj history analysis ([bb75972](https://github.com/Coobaha/OverKeys/commit/bb7597250e368253812522edd1c5fb1c3c8a3a88))
+* create comprehensive split matrix layout documentation ([4c4bd0f](https://github.com/Coobaha/OverKeys/commit/4c4bd0f33ec84719d76e4bae7ca6a5639c57d0a0))
+* document Glove80 layout breakthrough and technical innovations ([cb3ecf3](https://github.com/Coobaha/OverKeys/commit/cb3ecf3c505cadf6496f48f0ac477ca3e412e427))
+* document Glove80 layout breakthrough and technical innovations ([bb75972](https://github.com/Coobaha/OverKeys/commit/bb7597250e368253812522edd1c5fb1c3c8a3a88))
+* update and refine documentation ([c832d7a](https://github.com/Coobaha/OverKeys/commit/c832d7ab6008ca2e5f7e38fee48283ba92540870))
+* update configuration instructions to use 'Reload config' instead of restarting OverKeys ([2c29063](https://github.com/Coobaha/OverKeys/commit/2c290636374af138fdc292760d0ea118bf88b81d))
+* update docs to reflect numpad keys behavior change ([0d2856f](https://github.com/Coobaha/OverKeys/commit/0d2856f147e8cf1e819d64f69750a3c19c322920))
+* update documentation for Learning Mode ([5a8f8bc](https://github.com/Coobaha/OverKeys/commit/5a8f8bc62fe0d16d74fd0801a4b467f53f22ee79))
+* update option label from "Use custom layout from config" to "Use user layouts" ([1ddf917](https://github.com/Coobaha/OverKeys/commit/1ddf9172ed02a82b7030723b4491e894d02e8563))
+* update supported function keys range from F1-F12 to F1-F24 ([a239190](https://github.com/Coobaha/OverKeys/commit/a239190927c66b7fef2db7188ee67459d41f7b6b))
+* use same wording as in preferences window in its documentation ([52d53de](https://github.com/Coobaha/OverKeys/commit/52d53dec9347013e8ad59d1e7cfd80a71f51652c))
+
+
+### ⚙️ CI/CD Pipeline
+
+* add bootstrap-sha to release-please ([314dee5](https://github.com/Coobaha/OverKeys/commit/314dee585cda5ee6e5ef7de8424b2cb931834fea))
+* correct folder path for compression ([f629fbe](https://github.com/Coobaha/OverKeys/commit/f629fbeb4f75fa17892f5539dcb499af75f3e685))
+* show hidden changelog sections ([cc6ee26](https://github.com/Coobaha/OverKeys/commit/cc6ee260e3adfd7bb053bc47fca095cfd2e945b5))
+
+
+### 🔨 Refactoring
+
+* consolidate hotkey retrieval logic into a single method ([78b75f3](https://github.com/Coobaha/OverKeys/commit/78b75f3d72aa276b830b2cf2f62142ab120c54f3))
+* correct variable naming of userLayout/s ([48c8bc6](https://github.com/Coobaha/OverKeys/commit/48c8bc604875f43d5630eea0e3d1e3e6ed70acfa))
+* improve code health ([#111](https://github.com/Coobaha/OverKeys/issues/111)) ([78b75f3](https://github.com/Coobaha/OverKeys/commit/78b75f3d72aa276b830b2cf2f62142ab120c54f3))
+* modularize preference loading into separate methods ([78b75f3](https://github.com/Coobaha/OverKeys/commit/78b75f3d72aa276b830b2cf2f62142ab120c54f3))
+* move font_options to a separate file ([836c230](https://github.com/Coobaha/OverKeys/commit/836c2302afdc34ea4b3dbf46b30dba95cbc98206))
+* move variables to more appropriate groups ([1ddf917](https://github.com/Coobaha/OverKeys/commit/1ddf9172ed02a82b7030723b4491e894d02e8563))
+* rename to advancedSettingsEnabled for consistency ([836c230](https://github.com/Coobaha/OverKeys/commit/836c2302afdc34ea4b3dbf46b30dba95cbc98206))
+* simplify key retrieval logic in getKeyFromKeyCodeShift function ([78b75f3](https://github.com/Coobaha/OverKeys/commit/78b75f3d72aa276b830b2cf2f62142ab120c54f3))
+* update toggle option label and subtitle for user layout ([1ddf917](https://github.com/Coobaha/OverKeys/commit/1ddf9172ed02a82b7030723b4491e894d02e8563))
+* update user config handling and remove default values ([345f777](https://github.com/Coobaha/OverKeys/commit/345f7773a707f031d6c8a3e5aff4fdff2e000190))
+
 ## [0.3.0](https://github.com/conventoangelo/OverKeys/compare/v0.2.17...v0.3.0) (2025-04-28)
 
 
