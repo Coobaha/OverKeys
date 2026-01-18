@@ -85,6 +85,7 @@ class SmartVisibilityManager {
   final Function(String message, Duration duration)? onShowOverlay;
   final Function(String key, dynamic value)? onSavePreference;
   final Function()? onSetupTray;
+  final Function()? onToggleVisibility;
 
   SmartVisibilityManager({
     required double defaultLayerDelay,
@@ -100,6 +101,7 @@ class SmartVisibilityManager {
     this.onShowOverlay,
     this.onSavePreference,
     this.onSetupTray,
+    this.onToggleVisibility,
   })  : _defaultLayerDelay = defaultLayerDelay,
         _customLayerDelay = customLayerDelay;
 
@@ -1052,6 +1054,7 @@ class SmartVisibilityManager {
   }
 
   /// Handle cycle trigger - shows last layer first, then cycles through configured layers
+  /// When hidden, just toggles visibility instead of cycling
   LayerTransition handleCycleTrigger({
     String? defaultLayerName,
     required bool isWindowVisible,
@@ -1059,6 +1062,20 @@ class SmartVisibilityManager {
     _cancelAllTimers();
 
     if (_cycleLayers.isEmpty) {
+      return LayerTransition(
+        type: LayerTransitionType.none,
+        targetLayerName: _currentLayerName,
+        layout: _currentLayout,
+        shouldFadeOut: false,
+        shouldStartTimer: false,
+        shouldShow: false,
+        useSmartVisibility: false,
+      );
+    }
+
+    // When hidden, just toggle visibility - same as tray click
+    if (!_isVisible || _forceHidden) {
+      onToggleVisibility?.call();
       return LayerTransition(
         type: LayerTransitionType.none,
         targetLayerName: _currentLayerName,

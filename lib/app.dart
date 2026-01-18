@@ -309,6 +309,11 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       onTimerStateChange: (hasActiveTimer) {
         // Could be used for UI indicators in the future
       },
+      onToggleVisibility: () {
+        setState(() {
+          onTrayIconMouseDown();
+        });
+      },
     );
     _initialize();
   }
@@ -932,15 +937,13 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       }
     }
 
-    // Load cycle group configuration
+    // Load cycle group configuration - fallback to all user layouts
     final cycleGroup = await configService.getCycleGroup();
-    if (cycleGroup != null) {
-      _smartVisibilityManager.setCycleGroup(cycleGroup.trigger, cycleGroup.layers);
-      if (kDebugMode && _debugModeEnabled) {
-        debugPrint(
-            '🔧 Smart Visibility: Configured cycle group with trigger "${cycleGroup.trigger}" and layers: ${cycleGroup.layers}');
-      }
-    }
+    final cycleLayers = cycleGroup?.layers.isNotEmpty == true
+        ? cycleGroup!.layers
+        : allLayouts.map((l) => l.name).toList();
+    final cycleTrigger = cycleGroup?.trigger;
+    _smartVisibilityManager.setCycleGroup(cycleTrigger, cycleLayers);
 
     // AIDEV-NOTE: Now that all layers are loaded, calculate final window size
     _adjustWindowSize();
@@ -1684,6 +1687,14 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
   void _cycleUserLayout() {
     if (_allUserLayouts.isEmpty) return;
+
+    // When hidden, just toggle visibility instead of cycling
+    if (!_isWindowVisible || _smartVisibilityManager.isForceHidden) {
+      setState(() {
+        onTrayIconMouseDown();
+      });
+      return;
+    }
 
     // Find current layout index
     final currentIndex = _allUserLayouts.indexWhere(
