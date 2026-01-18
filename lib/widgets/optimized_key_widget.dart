@@ -34,6 +34,7 @@ class OptimizedKeyWidget extends StatefulWidget {
   final AutoSizeGroup? autoSizeGroup;
   final bool isShiftPressed; // AIDEV-NOTE: Current shift state for custom shift mappings
   final Map<String, String>? customShiftMappings;
+  final bool isActiveKey; // Highlight as layer indicator
 
   const OptimizedKeyWidget({
     super.key,
@@ -65,6 +66,7 @@ class OptimizedKeyWidget extends StatefulWidget {
     this.autoSizeGroup,
     this.isShiftPressed = false,
     this.customShiftMappings,
+    this.isActiveKey = false,
   });
 
   @override
@@ -248,8 +250,8 @@ class _OptimizedKeyWidgetState extends State<OptimizedKeyWidget>
       child: AnimatedBuilder(
         animation: _animationController,
         builder: (context, child) {
-          // AIDEV-NOTE: Show as pressed if ValueNotifier is true OR we're extending visibility
-          final isPressed = _keyNotifier.value || _shouldExtendVisibility;
+          // Show as pressed if: physically pressed, extending visibility, or active layer key
+          final isPressed = _keyNotifier.value || _shouldExtendVisibility || widget.isActiveKey;
           return _buildKeyContainer(isPressed);
         },
       ),

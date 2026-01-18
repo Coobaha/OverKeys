@@ -9,6 +9,7 @@ class KeyboardTab extends StatefulWidget {
   final double keyBorderRadius;
   final double keyBorderThickness;
   final double keyPadding;
+  final double rowGap;
   final double spaceWidth;
   final double splitWidth;
   final double lastRowSplitWidth;
@@ -22,6 +23,7 @@ class KeyboardTab extends StatefulWidget {
   final Function(double) updateKeyBorderRadius;
   final Function(double) updateKeyBorderThickness;
   final Function(double) updateKeyPadding;
+  final Function(double) updateRowGap;
   final Function(double) updateSpaceWidth;
   final Function(double) updateSplitWidth;
   final Function(double) updateLastRowSplitWidth;
@@ -38,6 +40,7 @@ class KeyboardTab extends StatefulWidget {
     required this.keyBorderRadius,
     required this.keyBorderThickness,
     required this.keyPadding,
+    required this.rowGap,
     required this.spaceWidth,
     required this.splitWidth,
     required this.lastRowSplitWidth,
@@ -51,6 +54,7 @@ class KeyboardTab extends StatefulWidget {
     required this.updateKeyBorderRadius,
     required this.updateKeyBorderThickness,
     required this.updateKeyPadding,
+    required this.updateRowGap,
     required this.updateSpaceWidth,
     required this.updateSplitWidth,
     required this.updateLastRowSplitWidth,
@@ -68,6 +72,7 @@ class _KeyboardTabState extends State<KeyboardTab> {
   late double _localKeyBorderRadius;
   late double _localKeyBorderThickness;
   late double _localKeyPadding;
+  late double _localRowGap;
   late double _localSpaceWidth;
   late double _localSplitWidth;
   late double _localLastRowSplitWidth;
@@ -82,6 +87,7 @@ class _KeyboardTabState extends State<KeyboardTab> {
     _localKeyBorderRadius = widget.keyBorderRadius;
     _localKeyBorderThickness = widget.keyBorderThickness;
     _localKeyPadding = widget.keyPadding;
+    _localRowGap = widget.rowGap;
     _localSpaceWidth = widget.spaceWidth;
     _localSplitWidth = widget.splitWidth;
     _localLastRowSplitWidth = widget.lastRowSplitWidth;
@@ -104,6 +110,9 @@ class _KeyboardTabState extends State<KeyboardTab> {
     }
     if (oldWidget.keyPadding != widget.keyPadding) {
       _localKeyPadding = widget.keyPadding;
+    }
+    if (oldWidget.rowGap != widget.rowGap) {
+      _localRowGap = widget.rowGap;
     }
     if (oldWidget.spaceWidth != widget.spaceWidth) {
       _localSpaceWidth = widget.spaceWidth;
@@ -245,6 +254,25 @@ class _KeyboardTabState extends State<KeyboardTab> {
             setState(() => _localKeyPadding = value);
           },
           onChangeEnd: widget.updateKeyPadding,
+        ),
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 300),
+          firstChild: const SizedBox.shrink(),
+          secondChild: SliderOption(
+            label: 'Row gap',
+            value: _localRowGap,
+            min: 0,
+            max: 20,
+            divisions: 40,
+            onChanged: (value) {
+              setState(() => _localRowGap = value);
+            },
+            onChangeEnd: widget.updateRowGap,
+          ),
+          crossFadeState: widget.keymapStyle == 'Split Matrix'
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          sizeCurve: Curves.easeInOut,
         ),
         SliderOption(
           label: 'Space width',

@@ -24,6 +24,7 @@ class KeyboardScreen extends StatelessWidget {
   final double keyBorderRadius;
   final double keyBorderThickness;
   final double keyPadding;
+  final double rowGap;
   final double spaceWidth;
   final double splitWidth;
   final double lastRowSplitWidth;
@@ -86,6 +87,7 @@ class KeyboardScreen extends StatelessWidget {
     required this.keyBorderRadius,
     required this.keyBorderThickness,
     required this.keyPadding,
+    required this.rowGap,
     required this.spaceWidth,
     required this.splitWidth,
     required this.lastRowSplitWidth,
@@ -134,11 +136,25 @@ class KeyboardScreen extends StatelessWidget {
     this.maxRightHandWidth,
   });
 
+  /// Get effective physicalLayout - layout's own or config's global
+  PhysicalLayout? _getEffectivePhysicalLayout() {
+    return layout.physicalLayout ?? config?.physicalLayout;
+  }
+
   @override
   Widget build(BuildContext context) {
     // DEBUG MODE: Text rendering for layout analysis
     if (layout.name.contains("DEBUG")) {
       return buildDebugTextLayout();
+    }
+
+    // Physical layout takes precedence - absolute positioning mode
+    final physLayout = _getEffectivePhysicalLayout();
+    if (debugMode) {
+      debugPrint('KeyboardScreen.build: physicalLayout=${physLayout != null}, layout.physicalLayout=${layout.physicalLayout != null}, config?.physicalLayout=${config?.physicalLayout != null}');
+    }
+    if (physLayout != null) {
+      return buildPhysicalLayout();
     }
 
     // AIDEV-NOTE: Check for explicit split layouts first (fixes row alignment issues)
@@ -171,6 +187,479 @@ class KeyboardScreen extends StatelessWidget {
           }).toList(),
         ),
       ),
+    );
+  }
+
+  /// Renders keyboard using absolute positioning from physicalLayout
+  Widget buildPhysicalLayout() {
+    final physical = _getEffectivePhysicalLayout()!;
+    final unitSize = _getPhysicalUnitSize(physical);
+
+    // Debug: print coordinate ranges for verification
+    if (debugMode) {
+      double lMainMin = double.infinity, lMainMax = 0;
+      double lThumbMin = double.infinity, lThumbMax = 0;
+      double rMainMin = double.infinity, rMainMax = 0;
+      double rThumbMin = double.infinity, rThumbMax = 0;
+      for (final k in physical.leftHand.keys) {
+        lMainMin = math.min(lMainMin, k.x);
+        lMainMax = math.max(lMainMax, k.x);
+      }
+      for (final k in physical.leftHand.thumbKeys) {
+        lThumbMin = math.min(lThumbMin, k.x);
+        lThumbMax = math.max(lThumbMax, k.x);
+      }
+      for (final k in physical.rightHand.keys) {
+        rMainMin = math.min(rMainMin, k.x);
+        rMainMax = math.max(rMainMax, k.x);
+      }
+      for (final k in physical.rightHand.thumbKeys) {
+        rThumbMin = math.min(rThumbMin, k.x);
+        rThumbMax = math.max(rThumbMax, k.x);
+      }
+      debugPrint('PhysicalLayout coords: L main($lMainMin-$lMainMax) thumb($lThumbMin-$lThumbMax) | R thumb($rThumbMin-$rThumbMax) main($rMainMin-$rMainMax)');
+      // Print first few right hand keys to verify positions
+      debugPrint('Right main keys: ${physical.rightHand.keys.take(6).map((k) => "r${k.row}c${k.col}@${k.x}").join(", ")}');
+      debugPrint('Right thumb keys: ${physical.rightHand.thumbKeys.map((k) => "${k.id}@${k.x}").join(", ")}');
+    }
+
+    // Calculate bounding box for all keys
+    final bounds = _calculatePhysicalBounds(physical, unitSize);
+
+    // Build positioned keys for both hands
+    List<Widget> positionedKeys = [];
+
+    // Left hand keys
+    for (final key in physical.leftHand.keys) {
+      final pos = _convertToPixels(key.x, key.y, unitSize, physical.unit);
+      final label = _getPhysicalKeyLabel(key, true);
+      positionedKeys.add(_buildPositionedKey(
+        key: key,
+        label: label,
+        x: pos.$1,
+        y: pos.$2,
+        unitSize: unitSize,
+        isLeft: true,
+      ));
+    }
+
+    // Left hand thumb keys
+    for (int i = 0; i < physical.leftHand.thumbKeys.length; i++) {
+      final thumbKey = physical.leftHand.thumbKeys[i];
+      final pos =
+          _convertToPixels(thumbKey.x, thumbKey.y, unitSize, physical.unit);
+      final label = _getPhysicalThumbKeyLabel(thumbKey, i, true);
+      positionedKeys.add(_buildPositionedThumbKey(
+        thumbKey: thumbKey,
+        label: label,
+        x: pos.$1,
+        y: pos.$2,
+        unitSize: unitSize,
+        isLeft: true,
+        thumbIndex: i,
+      ));
+    }
+
+    // Right hand keys - coordinates already include proper spacing from QMK format
+    for (final key in physical.rightHand.keys) {
+      final pos = _convertToPixels(key.x, key.y, unitSize, physical.unit);
+      final label = _getPhysicalKeyLabel(key, false);
+      if (debugMode && key.row == 0) {
+        debugPrint('RIGHT r0c${key.col}: x=${key.x} -> pixel=${pos.$1}, label=$label');
+      }
+      positionedKeys.add(_buildPositionedKey(
+        key: key,
+        label: label,
+        x: pos.$1,
+        y: pos.$2,
+        unitSize: unitSize,
+        isLeft: false,
+      ));
+    }
+
+    // Right hand thumb keys
+    for (int i = 0; i < physical.rightHand.thumbKeys.length; i++) {
+      final thumbKey = physical.rightHand.thumbKeys[i];
+      final pos =
+          _convertToPixels(thumbKey.x, thumbKey.y, unitSize, physical.unit);
+      final label = _getPhysicalThumbKeyLabel(thumbKey, i, false);
+      if (debugMode && thumbKey.id == 'R_T1') {
+        debugPrint('RIGHT R_T1: x=${thumbKey.x} -> pixel=${pos.$1}, label=$label');
+      }
+      positionedKeys.add(_buildPositionedThumbKey(
+        thumbKey: thumbKey,
+        label: label,
+        x: pos.$1,
+        y: pos.$2,
+        unitSize: unitSize,
+        isLeft: false,
+        thumbIndex: i,
+      ));
+    }
+
+    // Layer name label at top-center
+    final layerLabel = Positioned(
+      left: 0,
+      right: 0,
+      top: -32,
+      child: Center(
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: keyColorNotPressed,
+            borderRadius: BorderRadius.circular(keyBorderRadius),
+            border: keyBorderThickness > 0
+                ? Border.all(color: keyBorderColorNotPressed, width: keyBorderThickness)
+                : null,
+          ),
+          child: Text(
+            layout.name,
+            style: TextStyle(
+              color: keyTextColorNotPressed,
+              fontSize: keyFontSize * 0.85,
+              fontWeight: fontWeight,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Active key fingerprint indicator
+    Widget? activeKeyIndicator;
+    if (layout.activeKey != null) {
+      activeKeyIndicator = _buildActiveKeyIndicator(physical, unitSize);
+    }
+
+    Widget content = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ...positionedKeys,
+        if (activeKeyIndicator != null) activeKeyIndicator,
+        layerLabel,
+      ],
+    );
+
+    // Debug marker to verify physicalLayout rendering is active
+    if (debugMode) {
+      // Calculate key positions for debug markers
+      final lC1x = 5.0 * unitSize;  // Left innermost main column
+      final lT1x = 5.2 * unitSize;  // Left first thumb
+      final rT1x = 11.3 * unitSize; // Right last thumb
+      final r0c0x = 11.5 * unitSize; // Right innermost main column
+      content = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ...positionedKeys,
+          Positioned(
+            left: 0,
+            top: 0,
+            child: Container(
+              padding: EdgeInsets.all(4),
+              color: Colors.red,
+              child: Text('PHYSICAL LAYOUT', style: TextStyle(color: Colors.white, fontSize: 10)),
+            ),
+          ),
+          // Debug: vertical lines for LEFT side
+          Positioned(left: lC1x, top: 0, child: Container(width: 2, height: 300, color: Colors.yellow)),
+          Positioned(left: lT1x, top: 0, child: Container(width: 2, height: 300, color: Colors.cyan)),
+          // Debug: vertical lines for RIGHT side
+          Positioned(left: rT1x, top: 0, child: Container(width: 2, height: 300, color: Colors.green)),
+          Positioned(left: r0c0x, top: 0, child: Container(width: 2, height: 300, color: Colors.blue)),
+        ],
+      );
+    }
+
+    return SingleChildScrollView(
+      clipBehavior: Clip.none,
+      padding: EdgeInsets.all(keyPadding),
+      child: SizedBox(
+        width: bounds.totalWidth,
+        height: bounds.totalHeight,
+        child: content,
+      ),
+    );
+  }
+
+  /// Gets the pixel size for one unit based on physicalLayout settings
+  double _getPhysicalUnitSize(PhysicalLayout physical) {
+    switch (physical.unit) {
+      case PhysicalLayoutUnit.keyUnits:
+        // QMK coordinates use key units where 1 unit = 1 key width
+        // We use keySize + keyPadding so adjacent keys (x=0, x=1) have proper spacing
+        return keySize + keyPadding;
+      case PhysicalLayoutUnit.pixels:
+        return 1.0;
+      case PhysicalLayoutUnit.percent:
+        // Percent mode - will need container width, use keySize as base
+        return keySize / 100.0;
+    }
+  }
+
+  /// Convert x,y coordinates to pixel positions
+  (double, double) _convertToPixels(
+      double x, double y, double unitSize, PhysicalLayoutUnit unit) {
+    return (x * unitSize, y * unitSize);
+  }
+
+  /// Build fingerprint indicator for active layer key
+  Widget? _buildActiveKeyIndicator(PhysicalLayout physical, double unitSize) {
+    final activeKey = layout.activeKey;
+    if (activeKey == null) return null;
+
+    // Search thumb keys first (most common for layer keys)
+    for (final thumbKey in physical.leftHand.thumbKeys) {
+      if (thumbKey.id == activeKey) {
+        return _buildFingerprintAtPosition(thumbKey.x, thumbKey.y, thumbKey.w, thumbKey.h, thumbKey.rotate, unitSize);
+      }
+    }
+    for (final thumbKey in physical.rightHand.thumbKeys) {
+      if (thumbKey.id == activeKey) {
+        return _buildFingerprintAtPosition(thumbKey.x, thumbKey.y, thumbKey.w, thumbKey.h, thumbKey.rotate, unitSize);
+      }
+    }
+
+    // Search main keys (activeKey can be label like "L_C1R3" or match by label content)
+    for (final key in physical.leftHand.keys) {
+      final label = _getPhysicalKeyLabel(key, true);
+      if (activeKey == 'L_C${key.col + 1}R${key.row + 1}' || label == activeKey) {
+        return _buildFingerprintAtPosition(key.x, key.y, key.w, key.h, key.rotate, unitSize);
+      }
+    }
+    for (final key in physical.rightHand.keys) {
+      final label = _getPhysicalKeyLabel(key, false);
+      if (activeKey == 'R_C${key.col + 1}R${key.row + 1}' || label == activeKey) {
+        return _buildFingerprintAtPosition(key.x, key.y, key.w, key.h, key.rotate, unitSize);
+      }
+    }
+
+    return null;
+  }
+
+  /// Render fingerprint icon at physical position
+  Widget _buildFingerprintAtPosition(double x, double y, double w, double h, double rotate, double unitSize) {
+    final pos = _convertToPixels(x, y, unitSize, PhysicalLayoutUnit.keyUnits);
+    final keyW = keySize * w;
+    final keyH = keySize * h;
+
+    Widget indicator = Container(
+      width: keyW + keyPadding * 2,
+      height: keyH + keyPadding * 2,
+      padding: EdgeInsets.all(keyPadding),
+      child: Container(
+        decoration: BoxDecoration(
+          color: keyColorPressed,
+          borderRadius: BorderRadius.circular(keyBorderRadius),
+          border: keyBorderThickness > 0
+              ? Border.all(color: keyBorderColorPressed, width: keyBorderThickness)
+              : null,
+        ),
+        child: Center(
+          child: Icon(
+            Icons.fingerprint,
+            color: keyTextColor,
+            size: keyFontSize * 1.8,
+          ),
+        ),
+      ),
+    );
+
+    if (rotate != 0) {
+      indicator = Transform.rotate(
+        angle: rotate * (math.pi / 180),
+        alignment: Alignment.topLeft,
+        child: indicator,
+      );
+    }
+
+    return Positioned(
+      left: pos.$1,
+      top: pos.$2,
+      child: indicator,
+    );
+  }
+
+  /// Calculate bounding box for all keys in physical layout
+  ({double leftWidth, double rightWidth, double totalWidth, double totalHeight})
+      _calculatePhysicalBounds(PhysicalLayout physical, double unitSize) {
+    double maxX = 0;
+    double maxY = 0;
+
+    // Calculate bounds across all keys (both hands share same coordinate space)
+    for (final key in physical.leftHand.keys) {
+      final pos = _convertToPixels(key.x, key.y, unitSize, physical.unit);
+      final keyW = keySize * key.w;
+      final keyH = keySize * key.h;
+      maxX = math.max(maxX, pos.$1 + keyW + keyPadding * 2);
+      maxY = math.max(maxY, pos.$2 + keyH + keyPadding * 2);
+    }
+    for (final thumbKey in physical.leftHand.thumbKeys) {
+      final pos = _convertToPixels(thumbKey.x, thumbKey.y, unitSize, physical.unit);
+      final keyW = keySize * thumbKey.w;
+      final keyH = keySize * thumbKey.h;
+      maxX = math.max(maxX, pos.$1 + keyW + keyPadding * 2);
+      maxY = math.max(maxY, pos.$2 + keyH + keyPadding * 2);
+    }
+    for (final key in physical.rightHand.keys) {
+      final pos = _convertToPixels(key.x, key.y, unitSize, physical.unit);
+      final keyW = keySize * key.w;
+      final keyH = keySize * key.h;
+      maxX = math.max(maxX, pos.$1 + keyW + keyPadding * 2);
+      maxY = math.max(maxY, pos.$2 + keyH + keyPadding * 2);
+    }
+    for (final thumbKey in physical.rightHand.thumbKeys) {
+      final pos = _convertToPixels(thumbKey.x, thumbKey.y, unitSize, physical.unit);
+      final keyW = keySize * thumbKey.w;
+      final keyH = keySize * thumbKey.h;
+      maxX = math.max(maxX, pos.$1 + keyW + keyPadding * 2);
+      maxY = math.max(maxY, pos.$2 + keyH + keyPadding * 2);
+    }
+
+    return (
+      leftWidth: maxX,  // Not used separately anymore
+      rightWidth: 0.0,  // Not used separately anymore
+      totalWidth: maxX,
+      totalHeight: maxY,
+    );
+  }
+
+  /// Get label for a physical key from logical layout
+  String? _getPhysicalKeyLabel(PhysicalKey key, bool isLeft) {
+    // If key has explicit label, use it
+    if (key.label != null) return key.label;
+
+    // Otherwise look up from logical layout
+    final hand = isLeft ? layout.leftHand : layout.rightHand;
+    if (hand != null &&
+        key.row < hand.rows.length &&
+        key.col < hand.rows[key.row].length) {
+      return hand.rows[key.row][key.col];
+    }
+    return null;
+  }
+
+  /// Get label for a physical thumb key from logical layout
+  String? _getPhysicalThumbKeyLabel(
+      PhysicalThumbKey thumbKey, int index, bool isLeft) {
+    // If thumb key has explicit label, use it
+    if (thumbKey.label != null) return thumbKey.label;
+
+    // Otherwise look up from thumb cluster
+    if (layout.thumbCluster != null) {
+      final thumbKeys =
+          isLeft ? layout.thumbCluster!.leftKeys : layout.thumbCluster!.rightKeys;
+      // Parse id to get row/col (e.g., "LT0" -> row 0, col 0; "LT1" -> row 0, col 1)
+      // Simple approach: flatten thumb keys and use index
+      int flatIndex = 0;
+      for (int row = 0; row < thumbKeys.length; row++) {
+        for (int col = 0; col < thumbKeys[row].length; col++) {
+          if (flatIndex == index) {
+            return thumbKeys[row][col];
+          }
+          flatIndex++;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Build a positioned key widget with rotation support
+  Widget _buildPositionedKey({
+    required PhysicalKey key,
+    required String? label,
+    required double x,
+    required double y,
+    required double unitSize,
+    required bool isLeft,
+  }) {
+    final keyW = keySize * key.w;
+    final keyH = keySize * key.h;
+
+    Widget keyWidget;
+    if (debugMode) {
+      // Debug: use simple box to isolate layout issues
+      keyWidget = Container(
+        width: keyW + keyPadding * 2,
+        height: keyH + keyPadding * 2,
+        decoration: BoxDecoration(
+          color: isLeft ? Colors.blue.withOpacity(0.5) : Colors.red.withOpacity(0.5),
+          border: Border.all(color: Colors.white, width: 1),
+        ),
+        child: Center(child: Text(label ?? '?', style: TextStyle(fontSize: 10, color: Colors.white))),
+      );
+    } else {
+      keyWidget = Container(
+        width: keyW + keyPadding * 2,
+        height: keyH + keyPadding * 2,
+        child: buildOptimizedKey(key.row, label, key.col),
+      );
+    }
+
+    // Apply rotation around top-left corner (QMK uses position as pivot)
+    if (key.rotate != 0) {
+      keyWidget = Transform.rotate(
+        angle: key.rotate * (math.pi / 180),
+        alignment: Alignment.topLeft,
+        child: keyWidget,
+      );
+    }
+
+    // Debug: add marker showing actual position for boundary keys
+    if (debugMode && key.row == 0 && ((key.col == 5 && isLeft) || (key.col == 0 && !isLeft))) {
+      return Positioned(
+        left: x,
+        top: y,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            keyWidget,
+            Positioned(
+              left: 0,
+              top: 0,
+              child: Container(width: 10, height: 10, color: isLeft ? Colors.orange : Colors.red),
+            ),
+          ],
+        ),
+      );
+    }
+    return Positioned(
+      left: x,
+      top: y,
+      child: keyWidget,
+    );
+  }
+
+  /// Build a positioned thumb key widget with rotation support
+  Widget _buildPositionedThumbKey({
+    required PhysicalThumbKey thumbKey,
+    required String? label,
+    required double x,
+    required double y,
+    required double unitSize,
+    required bool isLeft,
+    required int thumbIndex,
+  }) {
+    final keyW = keySize * thumbKey.w;
+    final keyH = keySize * thumbKey.h;
+
+    Widget keyWidget = SizedBox(
+      width: keyW + keyPadding * 2,
+      height: keyH + keyPadding * 2,
+      child: buildOptimizedKey(-1, label, thumbIndex, isThumbKey: true),
+    );
+
+    // Apply rotation around top-left corner (QMK rx/ry = x/y means pivot at position)
+    if (thumbKey.rotate != 0) {
+      keyWidget = Transform.rotate(
+        angle: thumbKey.rotate * (math.pi / 180),
+        alignment: Alignment.topLeft,
+        child: keyWidget,
+      );
+    }
+
+    return Positioned(
+      left: x,
+      top: y,
+      child: keyWidget,
     );
   }
 
@@ -237,7 +726,10 @@ class KeyboardScreen extends StatelessWidget {
     }
 
     double thumbVerticalOffset = _getThumbClusterVerticalOffset();
+    double maxOffsetHeight = _getMaxColumnOffset();
+
     return SingleChildScrollView(
+      clipBehavior: Clip.none,
       padding: EdgeInsets.all(keyPadding),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -245,10 +737,12 @@ class KeyboardScreen extends StatelessWidget {
         children: [
           ...mainRows,
           if (thumbClusterWidget != null) ...[
-            SizedBox(height: keyPadding + thumbVerticalOffset),
+            // Minimal gap - just rowGap plus any configured vertical offset
+            SizedBox(height: rowGap + thumbVerticalOffset),
             thumbClusterWidget,
-            SizedBox(height: keyPadding * 2),
           ],
+          // Extra space at bottom for offset keys overflow
+          SizedBox(height: maxOffsetHeight),
         ],
       ),
     );
@@ -276,16 +770,20 @@ class KeyboardScreen extends StatelessWidget {
 
     // Use fixed-width container to prevent layout shifting when switching layers
     double thumbVerticalOffset = _getThumbClusterVerticalOffset();
+    double maxOffsetHeight = _getMaxColumnOffset();
+
     Widget content = Column(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
         ...mainRows,
         if (thumbClusterWidget != null) ...[
-          SizedBox(height: keyPadding + thumbVerticalOffset),
+          // Minimal gap - just rowGap plus any configured vertical offset
+          SizedBox(height: rowGap + thumbVerticalOffset),
           thumbClusterWidget,
-          SizedBox(height: keyPadding * 2),
         ],
+        // Extra space at bottom for offset keys overflow
+        SizedBox(height: maxOffsetHeight),
       ],
     );
 
@@ -298,6 +796,7 @@ class KeyboardScreen extends StatelessWidget {
     }
 
     return SingleChildScrollView(
+      clipBehavior: Clip.none,
       padding: EdgeInsets.all(keyPadding),
       child: content,
     );
@@ -420,11 +919,13 @@ class KeyboardScreen extends StatelessWidget {
     // AIDEV-NOTE: Use maximum hand widths if available to prevent shifting between layouts
     double leftHandWidth = maxLeftHandWidth ?? calculatedLeftWidth;
     double rightHandWidth = maxRightHandWidth ?? calculatedRightWidth;
-    double maxOffsetHeight =
-        _getMaxColumnOffset(); // Account for vertical offsets
+
+    // Row height is just the key size + padding - offset keys overflow and overlap with adjacent rows
+    double rowHeight = keySize + (keyPadding * 2);
 
     Widget rowWidget = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none, // Allow overflow for offset keys
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -445,24 +946,19 @@ class KeyboardScreen extends StatelessWidget {
             ),
             SizedBox(width: 8),
           ],
-          // Left hand - fixed width container with extra height for offsets
-          Container(
+          // Left hand - fixed width container, allows overflow for offset keys
+          SizedBox(
             width: leftHandWidth,
-            height: keySize + (keyPadding * 2) + maxOffsetHeight,
-            decoration: debugMode
-                ? BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.2),
-                    border: Border.all(color: Colors.red, width: 1),
-                  )
-                : null,
-            padding: debugMode ? EdgeInsets.all(4) : null,
-            child: ClipRect(
+            height: rowHeight,
+            child: OverflowBox(
+              maxHeight: double.infinity,
+              alignment: Alignment.topCenter,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
-                  crossAxisAlignment: CrossAxisAlignment
-                      .start, // Align to top to handle offsets
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: leftWidgets.isEmpty && debugMode
                       ? [Text('LEFT EMPTY', style: TextStyle(fontSize: 10))]
@@ -473,24 +969,19 @@ class KeyboardScreen extends StatelessWidget {
           ),
           // Split gap
           SizedBox(width: splitWidth),
-          // Right hand - fixed width container with extra height for offsets
-          Container(
+          // Right hand - fixed width container, allows overflow for offset keys
+          SizedBox(
             width: rightHandWidth,
-            height: keySize + (keyPadding * 2) + maxOffsetHeight,
-            decoration: debugMode
-                ? BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.2),
-                    border: Border.all(color: Colors.blue, width: 1),
-                  )
-                : null,
-            padding: debugMode ? EdgeInsets.all(4) : null,
-            child: ClipRect(
+            height: rowHeight,
+            child: OverflowBox(
+              maxHeight: double.infinity,
+              alignment: Alignment.topCenter,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
-                  crossAxisAlignment: CrossAxisAlignment
-                      .start, // Align to top to handle offsets
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: rightWidgets.isEmpty && debugMode
                       ? [Text('RIGHT EMPTY', style: TextStyle(fontSize: 10))]
@@ -504,7 +995,7 @@ class KeyboardScreen extends StatelessWidget {
     );
 
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: keyPadding / 2),
+      padding: EdgeInsets.symmetric(vertical: rowGap / 2),
       child: rowWidget,
     );
   }
@@ -513,17 +1004,40 @@ class KeyboardScreen extends StatelessWidget {
     // Use configured thumb gap from metadata, or default to 40% of split width
     double thumbGap = _getThumbClusterGap();
 
+    // Calculate hand widths to match main keyboard layout
+    double calculatedLeftWidth = _calculateLeftHandWidth();
+    double calculatedRightWidth = _calculateRightHandWidth();
+    double leftHandWidth = maxLeftHandWidth ?? calculatedLeftWidth;
+    double rightHandWidth = maxRightHandWidth ?? calculatedRightWidth;
+
     Widget thumbWidget = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Left thumb cluster - positioned more inward
-          buildThumbClusterSide(thumbCluster.leftKeys, true),
-          SizedBox(width: thumbGap),
-          // Right thumb cluster - positioned more inward
-          buildThumbClusterSide(thumbCluster.rightKeys, false),
+          // Left thumb cluster - aligned with left hand width
+          SizedBox(
+            width: leftHandWidth,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end, // Align to inner edge
+              children: [
+                buildThumbClusterSide(thumbCluster.leftKeys, true),
+              ],
+            ),
+          ),
+          // Split gap (same as main keyboard)
+          SizedBox(width: splitWidth),
+          // Right thumb cluster - aligned with right hand width
+          SizedBox(
+            width: rightHandWidth,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start, // Align to inner edge
+              children: [
+                buildThumbClusterSide(thumbCluster.rightKeys, false),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -562,7 +1076,7 @@ class KeyboardScreen extends StatelessWidget {
         thumbRows.add(SizedBox(
             height: keySize + keyPadding * 2)); // Same height as normal row
         if (rowIndex < thumbKeys.length - 1) {
-          thumbRows.add(SizedBox(height: keyPadding)); // Row spacing
+          thumbRows.add(SizedBox(height: rowGap)); // Row spacing
         }
         continue;
       }
@@ -612,7 +1126,7 @@ class KeyboardScreen extends StatelessWidget {
           children: rowWidgets,
         ));
         if (rowIndex < thumbKeys.length - 1) {
-          thumbRows.add(SizedBox(height: keyPadding));
+          thumbRows.add(SizedBox(height: rowGap));
         }
       }
     }
@@ -647,7 +1161,7 @@ class KeyboardScreen extends StatelessWidget {
     }
 
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: keyPadding / 2),
+      padding: EdgeInsets.symmetric(vertical: rowGap / 2),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -858,6 +1372,7 @@ class KeyboardScreen extends StatelessWidget {
       autoSizeGroup: _getAutoSizeGroup(key),
       isShiftPressed: isShiftPressed,
       customShiftMappings: customShiftMappings,
+      isActiveKey: layout.activeKey != null && key == layout.activeKey,
     );
   }
 
@@ -970,8 +1485,10 @@ class KeyboardScreen extends StatelessWidget {
     return config?.metadata;
   }
 
-  // Calculates vertical offset for left hand columns
+  // Calculates vertical offset for left hand columns (normalized so min offset = 0)
   double _getLeftColumnOffset(int columnIndex, int totalColumns) {
+    double minOffset = _getMinColumnOffset();
+
     final metadata = _getEffectiveMetadata();
     if (metadata != null && metadata['columnOffsets'] != null) {
       final columnOffsets = metadata['columnOffsets'] as Map<String, dynamic>;
@@ -983,16 +1500,21 @@ class KeyboardScreen extends StatelessWidget {
 
         if (leftOffsets.containsKey(columnKey)) {
           double offsetPercentage = leftOffsets[columnKey].toDouble();
-          return keySize * (offsetPercentage / 100.0);
+          double rawOffset = keySize * (offsetPercentage / 100.0);
+          // Normalize: subtract minOffset so most negative becomes 0
+          return rawOffset - minOffset;
         }
       }
     }
 
-    return 0.0;
+    // Default offset for columns without config: normalize against minOffset
+    return -minOffset;
   }
 
-  // Calculates vertical offset for right hand columns
+  // Calculates vertical offset for right hand columns (normalized so min offset = 0)
   double _getRightColumnOffset(int columnIndex, int totalColumns) {
+    double minOffset = _getMinColumnOffset();
+
     final metadata = _getEffectiveMetadata();
     if (metadata != null && metadata['columnOffsets'] != null) {
       final columnOffsets = metadata['columnOffsets'] as Map<String, dynamic>;
@@ -1004,17 +1526,18 @@ class KeyboardScreen extends StatelessWidget {
 
         if (rightOffsets.containsKey(columnKey)) {
           double offsetPercentage = rightOffsets[columnKey].toDouble();
-          return keySize * (offsetPercentage / 100.0);
+          double rawOffset = keySize * (offsetPercentage / 100.0);
+          return rawOffset - minOffset;
         }
       }
     }
 
-    return 0.0;
+    return -minOffset;
   }
 
-  // Calculates maximum column offset to determine container height
-  double _getMaxColumnOffset() {
-    double maxOffset = 0.0;
+  // Gets min offset (most negative) to use as baseline
+  double _getMinColumnOffset() {
+    double minOffset = 0.0;
 
     final metadata = _getEffectiveMetadata();
     if (metadata != null && metadata['columnOffsets'] != null) {
@@ -1024,7 +1547,7 @@ class KeyboardScreen extends StatelessWidget {
       if (leftOffsets != null) {
         for (var value in leftOffsets.values) {
           double offsetPixels = keySize * (value.toDouble() / 100.0);
-          maxOffset = math.max(maxOffset, offsetPixels);
+          minOffset = math.min(minOffset, offsetPixels);
         }
       }
 
@@ -1032,7 +1555,39 @@ class KeyboardScreen extends StatelessWidget {
       if (rightOffsets != null) {
         for (var value in rightOffsets.values) {
           double offsetPixels = keySize * (value.toDouble() / 100.0);
-          maxOffset = math.max(maxOffset, offsetPixels);
+          minOffset = math.min(minOffset, offsetPixels);
+        }
+      }
+    }
+
+    return minOffset;
+  }
+
+  // Calculates maximum column offset (relative to baseline) for container height
+  double _getMaxColumnOffset() {
+    double maxOffset = 0.0;
+    double minOffset = _getMinColumnOffset();
+
+    final metadata = _getEffectiveMetadata();
+    if (metadata != null && metadata['columnOffsets'] != null) {
+      final columnOffsets = metadata['columnOffsets'] as Map<String, dynamic>;
+
+      final leftOffsets = columnOffsets['left'] as Map<String, dynamic>?;
+      if (leftOffsets != null) {
+        for (var value in leftOffsets.values) {
+          double offsetPixels = keySize * (value.toDouble() / 100.0);
+          // Normalize to baseline (most negative becomes 0)
+          double normalizedOffset = offsetPixels - minOffset;
+          maxOffset = math.max(maxOffset, normalizedOffset);
+        }
+      }
+
+      final rightOffsets = columnOffsets['right'] as Map<String, dynamic>?;
+      if (rightOffsets != null) {
+        for (var value in rightOffsets.values) {
+          double offsetPixels = keySize * (value.toDouble() / 100.0);
+          double normalizedOffset = offsetPixels - minOffset;
+          maxOffset = math.max(maxOffset, normalizedOffset);
         }
       }
     }

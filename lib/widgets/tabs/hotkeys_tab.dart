@@ -11,12 +11,14 @@ class HotKeysTab extends StatefulWidget {
   final HotKey preferencesHotKey;
   final HotKey increaseOpacityHotKey;
   final HotKey decreaseOpacityHotKey;
+  final HotKey cycleLayoutHotKey;
   final bool enableVisibilityHotKey;
   final bool enableAutoHideHotKey;
   final bool enableToggleMoveHotKey;
   final bool enablePreferencesHotKey;
   final bool enableIncreaseOpacityHotKey;
   final bool enableDecreaseOpacityHotKey;
+  final bool enableCycleLayoutHotKey;
   final Function(bool) updateHotKeysEnabled;
   final Function(HotKey) updateVisibilityHotKey;
   final Function(HotKey) updateAutoHideHotKey;
@@ -24,12 +26,14 @@ class HotKeysTab extends StatefulWidget {
   final Function(HotKey) updatePreferencesHotKey;
   final Function(HotKey) updateIncreaseOpacityHotKey;
   final Function(HotKey) updateDecreaseOpacityHotKey;
+  final Function(HotKey) updateCycleLayoutHotKey;
   final Function(bool) updateEnableVisibilityHotKey;
   final Function(bool) updateEnableAutoHideHotKey;
   final Function(bool) updateEnableToggleMoveHotKey;
   final Function(bool) updateEnablePreferencesHotKey;
   final Function(bool) updateEnableIncreaseOpacityHotKey;
   final Function(bool) updateEnableDecreaseOpacityHotKey;
+  final Function(bool) updateEnableCycleLayoutHotKey;
 
   const HotKeysTab({
     super.key,
@@ -40,6 +44,7 @@ class HotKeysTab extends StatefulWidget {
     required this.preferencesHotKey,
     required this.increaseOpacityHotKey,
     required this.decreaseOpacityHotKey,
+    required this.cycleLayoutHotKey,
     required this.updateHotKeysEnabled,
     required this.updateVisibilityHotKey,
     required this.updateAutoHideHotKey,
@@ -47,18 +52,21 @@ class HotKeysTab extends StatefulWidget {
     required this.updatePreferencesHotKey,
     required this.updateIncreaseOpacityHotKey,
     required this.updateDecreaseOpacityHotKey,
+    required this.updateCycleLayoutHotKey,
     required this.enableVisibilityHotKey,
     required this.enableAutoHideHotKey,
     required this.enableToggleMoveHotKey,
     required this.enablePreferencesHotKey,
     required this.enableIncreaseOpacityHotKey,
     required this.enableDecreaseOpacityHotKey,
+    required this.enableCycleLayoutHotKey,
     required this.updateEnableVisibilityHotKey,
     required this.updateEnableAutoHideHotKey,
     required this.updateEnableToggleMoveHotKey,
     required this.updateEnablePreferencesHotKey,
     required this.updateEnableIncreaseOpacityHotKey,
     required this.updateEnableDecreaseOpacityHotKey,
+    required this.updateEnableCycleLayoutHotKey,
   });
 
   @override
@@ -151,6 +159,19 @@ class _HotKeysTabState extends State<HotKeysTab> {
             context,
             widget.updateDecreaseOpacityHotKey,
             widget.decreaseOpacityHotKey,
+          ),
+          isEnabled: widget.hotKeysEnabled,
+        ),
+        HotKeyOption(
+          label: 'Cycle Layout',
+          subtitle: 'Cycle through user layouts',
+          formattedHotKey: _formatHotKey(widget.cycleLayoutHotKey),
+          enabled: widget.enableCycleLayoutHotKey,
+          onToggleChanged: widget.updateEnableCycleLayoutHotKey,
+          onChangePressed: () => _showRecordHotKeyDialog(
+            context,
+            widget.updateCycleLayoutHotKey,
+            widget.cycleLayoutHotKey,
           ),
           isEnabled: widget.hotKeysEnabled,
         ),

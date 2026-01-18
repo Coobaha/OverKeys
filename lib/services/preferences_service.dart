@@ -31,6 +31,8 @@ class PreferencesService {
       await _prefs.getDouble('keyBorderThickness') ?? 0;
   Future<double> getKeyPadding() async =>
       await _prefs.getDouble('keyPadding') ?? 3;
+  Future<double> getRowGap() async =>
+      await _prefs.getDouble('rowGap') ?? await getKeyPadding();
   Future<double> getSpaceWidth() async =>
       await _prefs.getDouble('spaceWidth') ?? 320;
   Future<double> getSplitWidth() async =>
@@ -129,6 +131,10 @@ class PreferencesService {
       'decreaseOpacityHotKey',
       PhysicalKeyboardKey.arrowDown,
       [HotKeyModifier.alt, HotKeyModifier.control]);
+  Future<HotKey?> getCycleLayoutHotKey() async => _getHotKey(
+      'cycleLayoutHotKey',
+      PhysicalKeyboardKey.space,
+      [HotKeyModifier.alt, HotKeyModifier.control]);
   Future<bool> getEnableVisibilityHotKey() async =>
       await _prefs.getBool('enableVisibilityHotKey') ?? true;
   Future<bool> getEnableAutoHideHotKey() async =>
@@ -141,6 +147,8 @@ class PreferencesService {
       await _prefs.getBool('enableIncreaseOpacityHotKey') ?? true;
   Future<bool> getEnableDecreaseOpacityHotKey() async =>
       await _prefs.getBool('enableDecreaseOpacityHotKey') ?? true;
+  Future<bool> getEnableCycleLayoutHotKey() async =>
+      await _prefs.getBool('enableCycleLayoutHotKey') ?? true;
 
   // Learn settings
   Future<bool> getLearningModeEnabled() async =>
@@ -230,6 +238,8 @@ class PreferencesService {
       await _prefs.setDouble('keyBorderThickness', value);
   Future<void> setKeyPadding(double value) async =>
       await _prefs.setDouble('keyPadding', value);
+  Future<void> setRowGap(double value) async =>
+      await _prefs.setDouble('rowGap', value);
   Future<void> setSpaceWidth(double value) async =>
       await _prefs.setDouble('spaceWidth', value);
   Future<void> setSplitWidth(double value) async =>
@@ -306,6 +316,8 @@ class PreferencesService {
       .setString('increaseOpacityHotKey', jsonEncode(value.toJson()));
   Future<void> setDecreaseOpacityHotKey(HotKey value) async => await _prefs
       .setString('decreaseOpacityHotKey', jsonEncode(value.toJson()));
+  Future<void> setCycleLayoutHotKey(HotKey value) async => await _prefs
+      .setString('cycleLayoutHotKey', jsonEncode(value.toJson()));
   Future<void> setEnableVisibilityHotKey(bool value) async =>
       await _prefs.setBool('enableVisibilityHotKey', value);
   Future<void> setEnableAutoHideHotKey(bool value) async =>
@@ -318,6 +330,8 @@ class PreferencesService {
       await _prefs.setBool('enableIncreaseOpacityHotKey', value);
   Future<void> setEnableDecreaseOpacityHotKey(bool value) async =>
       await _prefs.setBool('enableDecreaseOpacityHotKey', value);
+  Future<void> setEnableCycleLayoutHotKey(bool value) async =>
+      await _prefs.setBool('enableCycleLayoutHotKey', value);
 
   // Learn settings
   Future<void> setLearningModeEnabled(bool value) async =>
@@ -404,6 +418,7 @@ class PreferencesService {
         'keyBorderRadius': await getKeyBorderRadius(),
         'keyBorderThickness': await getKeyBorderThickness(),
         'keyPadding': await getKeyPadding(),
+        'rowGap': await getRowGap(),
         'spaceWidth': await getSpaceWidth(),
         'splitWidth': await getSplitWidth(),
         'lastRowSplitWidth': await getLastRowSplitWidth(),
@@ -452,12 +467,14 @@ class PreferencesService {
         'preferencesHotKey': await getPreferencesHotKey(),
         'increaseOpacityHotKey': await getIncreaseOpacityHotKey(),
         'decreaseOpacityHotKey': await getDecreaseOpacityHotKey(),
+        'cycleLayoutHotKey': await getCycleLayoutHotKey(),
         'enableVisibilityHotKey': await getEnableVisibilityHotKey(),
         'enableAutoHideHotKey': await getEnableAutoHideHotKey(),
         'enableToggleMoveHotKey': await getEnableToggleMoveHotKey(),
         'enablePreferencesHotKey': await getEnablePreferencesHotKey(),
         'enableIncreaseOpacityHotKey': await getEnableIncreaseOpacityHotKey(),
         'enableDecreaseOpacityHotKey': await getEnableDecreaseOpacityHotKey(),
+        'enableCycleLayoutHotKey': await getEnableCycleLayoutHotKey(),
       };
 
   Future<Map<String, dynamic>> _loadLearnPreferences() async => {
@@ -508,6 +525,7 @@ class PreferencesService {
     await setKeyBorderRadius(prefs['keyBorderRadius']);
     await setKeyBorderThickness(prefs['keyBorderThickness']);
     await setKeyPadding(prefs['keyPadding']);
+    if (prefs['rowGap'] != null) await setRowGap(prefs['rowGap']);
     await setSpaceWidth(prefs['spaceWidth']);
     await setSplitWidth(prefs['splitWidth']);
     await setLastRowSplitWidth(prefs['lastRowSplitWidth']);
@@ -551,6 +569,7 @@ class PreferencesService {
     await setPreferencesHotKey(prefs['preferencesHotKey']);
     await setIncreaseOpacityHotKey(prefs['increaseOpacityHotKey']);
     await setDecreaseOpacityHotKey(prefs['decreaseOpacityHotKey']);
+    await setCycleLayoutHotKey(prefs['cycleLayoutHotKey']);
     await setEnableVisibilityHotKey(prefs['enableVisibilityHotKey'] ?? true);
     await setEnableAutoHideHotKey(prefs['enableAutoHideHotKey'] ?? true);
     await setEnableToggleMoveHotKey(prefs['enableToggleMoveHotKey'] ?? true);
@@ -559,6 +578,8 @@ class PreferencesService {
         prefs['enableIncreaseOpacityHotKey'] ?? true);
     await setEnableDecreaseOpacityHotKey(
         prefs['enableDecreaseOpacityHotKey'] ?? true);
+    await setEnableCycleLayoutHotKey(
+        prefs['enableCycleLayoutHotKey'] ?? true);
 
     // Learn settings
     await setLearningModeEnabled(prefs['learningModeEnabled'] ?? false);

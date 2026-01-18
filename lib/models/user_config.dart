@@ -33,6 +33,7 @@ class UserConfig {
   double? defaultLayerDelay;
   CycleGroup? cycleGroup;
   Map<String, dynamic>? metadata; // Global physical keyboard config (columnOffsets, thumbCluster)
+  PhysicalLayout? physicalLayout; // Global physical layout for all userLayouts
 
   UserConfig({
     this.defaultUserLayout,
@@ -49,6 +50,7 @@ class UserConfig {
     this.defaultLayerDelay,
     this.cycleGroup,
     this.metadata,
+    this.physicalLayout,
   })  : customShiftMappings = customShiftMappings ?? {},
         actionMappings = actionMappings ?? {};
 
@@ -164,6 +166,13 @@ class UserConfig {
           continue;
         }
 
+        // Parse physicalLayout if present
+        PhysicalLayout? physicalLayout;
+        if (userLayout['physicalLayout'] != null) {
+          physicalLayout = PhysicalLayout.fromJson(
+              userLayout['physicalLayout'] as Map<String, dynamic>);
+        }
+
         userLayouts.add(KeyboardLayout(
           name: userLayout['name'],
           keys: keys,
@@ -176,6 +185,8 @@ class UserConfig {
           metadata: userLayout['metadata'] != null
               ? Map<String, dynamic>.from(userLayout['metadata'])
               : null,
+          physicalLayout: physicalLayout,
+          activeKey: userLayout['activeKey'],
         ));
       }
     }
@@ -201,6 +212,12 @@ class UserConfig {
       cycleGroup = CycleGroup.fromJson(json['cycleGroup']);
     }
 
+    PhysicalLayout? physicalLayout;
+    if (json['physicalLayout'] != null) {
+      physicalLayout =
+          PhysicalLayout.fromJson(json['physicalLayout'] as Map<String, dynamic>);
+    }
+
     return UserConfig(
       defaultUserLayout: json['defaultUserLayout'],
       altLayout: json['altLayout'],
@@ -218,6 +235,7 @@ class UserConfig {
           json['defaultUserLayoutShowDelay']?.toDouble(),
       cycleGroup: cycleGroup,
       metadata: json['metadata'] as Map<String, dynamic>?,
+      physicalLayout: physicalLayout,
     );
   }
 

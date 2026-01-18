@@ -60,6 +60,7 @@ class _PreferencesScreenState extends State<PreferencesScreen>
   double _keyBorderRadius = 12;
   double _keyBorderThickness = 0;
   double _keyPadding = 3;
+  double _rowGap = 3;
   double _spaceWidth = 320;
   double _splitWidth = 100;
   double _lastRowSplitWidth = 100;
@@ -121,12 +122,17 @@ class _PreferencesScreenState extends State<PreferencesScreen>
     key: PhysicalKeyboardKey.arrowDown,
     modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
   );
+  HotKey _cycleLayoutHotKey = HotKey(
+    key: PhysicalKeyboardKey.space,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
   bool _enableVisibilityHotKey = true;
   bool _enableAutoHideHotKey = true;
   bool _enableToggleMoveHotKey = true;
   bool _enablePreferencesHotKey = true;
   bool _enableIncreaseOpacityHotKey = true;
   bool _enableDecreaseOpacityHotKey = true;
+  bool _enableCycleLayoutHotKey = true;
 
   // Learn settings
   bool _learningModeEnabled = false;
@@ -241,6 +247,7 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           _keyBorderRadius = prefs['keyBorderRadius'];
           _keyBorderThickness = prefs['keyBorderThickness'];
           _keyPadding = prefs['keyPadding'];
+          _rowGap = prefs['rowGap'] ?? _keyPadding;
           _spaceWidth = prefs['spaceWidth'];
           _splitWidth = prefs['splitWidth'];
           _lastRowSplitWidth = prefs['lastRowSplitWidth'];
@@ -284,6 +291,7 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           _preferencesHotKey = prefs['preferencesHotKey'];
           _increaseOpacityHotKey = prefs['increaseOpacityHotKey'];
           _decreaseOpacityHotKey = prefs['decreaseOpacityHotKey'];
+          _cycleLayoutHotKey = prefs['cycleLayoutHotKey'];
           _enableVisibilityHotKey = prefs['enableVisibilityHotKey'] ?? true;
           _enableAutoHideHotKey = prefs['enableAutoHideHotKey'] ?? true;
           _enableToggleMoveHotKey = prefs['enableToggleMoveHotKey'] ?? true;
@@ -292,6 +300,8 @@ class _PreferencesScreenState extends State<PreferencesScreen>
               prefs['enableIncreaseOpacityHotKey'] ?? true;
           _enableDecreaseOpacityHotKey =
               prefs['enableDecreaseOpacityHotKey'] ?? true;
+          _enableCycleLayoutHotKey =
+              prefs['enableCycleLayoutHotKey'] ?? true;
 
           // Learn settings
           _learningModeEnabled = prefs['learningModeEnabled'] ?? false;
@@ -342,6 +352,7 @@ class _PreferencesScreenState extends State<PreferencesScreen>
       'keyBorderRadius': _keyBorderRadius,
       'keyBorderThickness': _keyBorderThickness,
       'keyPadding': _keyPadding,
+      'rowGap': _rowGap,
       'spaceWidth': _spaceWidth,
       'splitWidth': _splitWidth,
       'lastRowSplitWidth': _lastRowSplitWidth,
@@ -385,12 +396,14 @@ class _PreferencesScreenState extends State<PreferencesScreen>
       'preferencesHotKey': _preferencesHotKey,
       'increaseOpacityHotKey': _increaseOpacityHotKey,
       'decreaseOpacityHotKey': _decreaseOpacityHotKey,
+      'cycleLayoutHotKey': _cycleLayoutHotKey,
       'enableVisibilityHotKey': _enableVisibilityHotKey,
       'enableAutoHideHotKey': _enableAutoHideHotKey,
       'enableToggleMoveHotKey': _enableToggleMoveHotKey,
       'enablePreferencesHotKey': _enablePreferencesHotKey,
       'enableIncreaseOpacityHotKey': _enableIncreaseOpacityHotKey,
       'enableDecreaseOpacityHotKey': _enableDecreaseOpacityHotKey,
+      'enableCycleLayoutHotKey': _enableCycleLayoutHotKey,
 
       // Learn settings
       'learningModeEnabled': _learningModeEnabled,
@@ -664,6 +677,7 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           keyBorderRadius: _keyBorderRadius,
           keyBorderThickness: _keyBorderThickness,
           keyPadding: _keyPadding,
+          rowGap: _rowGap,
           spaceWidth: _spaceWidth,
           splitWidth: _splitWidth,
           lastRowSplitWidth: _lastRowSplitWidth,
@@ -697,6 +711,10 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           updateKeyPadding: (value) {
             setState(() => _keyPadding = value);
             _updateMainWindow('updateKeyPadding', value);
+          },
+          updateRowGap: (value) {
+            setState(() => _rowGap = value);
+            _updateMainWindow('updateRowGap', value);
           },
           updateSpaceWidth: (value) {
             setState(() => _spaceWidth = value);
@@ -845,12 +863,14 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           preferencesHotKey: _preferencesHotKey,
           increaseOpacityHotKey: _increaseOpacityHotKey,
           decreaseOpacityHotKey: _decreaseOpacityHotKey,
+          cycleLayoutHotKey: _cycleLayoutHotKey,
           enableVisibilityHotKey: _enableVisibilityHotKey,
           enableAutoHideHotKey: _enableAutoHideHotKey,
           enableToggleMoveHotKey: _enableToggleMoveHotKey,
           enablePreferencesHotKey: _enablePreferencesHotKey,
           enableIncreaseOpacityHotKey: _enableIncreaseOpacityHotKey,
           enableDecreaseOpacityHotKey: _enableDecreaseOpacityHotKey,
+          enableCycleLayoutHotKey: _enableCycleLayoutHotKey,
           updateHotKeysEnabled: (value) {
             setState(() => _hotKeysEnabled = value);
             _updateMainWindow('updateHotKeysEnabled', value);
@@ -879,6 +899,10 @@ class _PreferencesScreenState extends State<PreferencesScreen>
             setState(() => _decreaseOpacityHotKey = value);
             _updateMainWindow('updateDecreaseOpacityHotKey', value);
           },
+          updateCycleLayoutHotKey: (value) {
+            setState(() => _cycleLayoutHotKey = value);
+            _updateMainWindow('updateCycleLayoutHotKey', value);
+          },
           updateEnableVisibilityHotKey: (value) {
             setState(() => _enableVisibilityHotKey = value);
             _updateMainWindow('updateEnableVisibilityHotKey', value);
@@ -902,6 +926,10 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           updateEnableDecreaseOpacityHotKey: (value) {
             setState(() => _enableDecreaseOpacityHotKey = value);
             _updateMainWindow('updateEnableDecreaseOpacityHotKey', value);
+          },
+          updateEnableCycleLayoutHotKey: (value) {
+            setState(() => _enableCycleLayoutHotKey = value);
+            _updateMainWindow('updateEnableCycleLayoutHotKey', value);
           },
         );
       case 'Learn':

@@ -110,6 +110,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   double _keyBorderRadius = 2;
   double _keyBorderThickness = 0;
   double _keyPadding = 5;
+  double _rowGap = 5;
   double _spaceWidth = 320;
   double _splitWidth = 100;
   double _lastRowSplitWidth = 100;
@@ -176,12 +177,17 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     key: PhysicalKeyboardKey.arrowDown,
     modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
   );
+  HotKey _cycleLayoutHotKey = HotKey(
+    key: PhysicalKeyboardKey.space,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
   bool _enableVisibilityHotKey = true;
   bool _enableAutoHideHotKey = true;
   bool _enableToggleMoveHotKey = true;
   bool _enablePreferencesHotKey = true;
   bool _enableIncreaseOpacityHotKey = true;
   bool _enableDecreaseOpacityHotKey = true;
+  bool _enableCycleLayoutHotKey = true;
   final bool _enableLayerSwitchingHotKey = false;
 
   // Learn settings
@@ -403,6 +409,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _keyBorderRadius = prefs['keyBorderRadius'];
       _keyBorderThickness = prefs['keyBorderThickness'];
       _keyPadding = prefs['keyPadding'];
+      _rowGap = prefs['rowGap'] ?? _keyPadding;
       _spaceWidth = prefs['spaceWidth'];
       _splitWidth = prefs['splitWidth'];
       _lastRowSplitWidth = prefs['lastRowSplitWidth'];
@@ -446,6 +453,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _preferencesHotKey = prefs['preferencesHotKey'];
       _increaseOpacityHotKey = prefs['increaseOpacityHotKey'];
       _decreaseOpacityHotKey = prefs['decreaseOpacityHotKey'];
+      _cycleLayoutHotKey = prefs['cycleLayoutHotKey'];
       _enableVisibilityHotKey = prefs['enableVisibilityHotKey'] ?? true;
       _enableAutoHideHotKey = prefs['enableAutoHideHotKey'] ?? true;
       _enableToggleMoveHotKey = prefs['enableToggleMoveHotKey'] ?? true;
@@ -454,6 +462,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           prefs['enableIncreaseOpacityHotKey'] ?? true;
       _enableDecreaseOpacityHotKey =
           prefs['enableDecreaseOpacityHotKey'] ?? true;
+      _enableCycleLayoutHotKey = prefs['enableCycleLayoutHotKey'] ?? true;
 
       // Learn settings
       _learningModeEnabled = prefs['learningModeEnabled'];
@@ -588,6 +597,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       'keyBorderRadius': _keyBorderRadius,
       'keyBorderThickness': _keyBorderThickness,
       'keyPadding': _keyPadding,
+      'rowGap': _rowGap,
       'spaceWidth': _spaceWidth,
       'splitWidth': _splitWidth,
       'lastRowSplitWidth': _lastRowSplitWidth,
@@ -631,12 +641,14 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       'preferencesHotKey': _preferencesHotKey,
       'increaseOpacityHotKey': _increaseOpacityHotKey,
       'decreaseOpacityHotKey': _decreaseOpacityHotKey,
+      'cycleLayoutHotKey': _cycleLayoutHotKey,
       'enableVisibilityHotKey': _enableVisibilityHotKey,
       'enableAutoHideHotKey': _enableAutoHideHotKey,
       'enableToggleMoveHotKey': _enableToggleMoveHotKey,
       'enablePreferencesHotKey': _enablePreferencesHotKey,
       'enableIncreaseOpacityHotKey': _enableIncreaseOpacityHotKey,
       'enableDecreaseOpacityHotKey': _enableDecreaseOpacityHotKey,
+      'enableCycleLayoutHotKey': _enableCycleLayoutHotKey,
 
       // Learn settings
       'learningModeEnabled': _learningModeEnabled,
@@ -857,12 +869,23 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     // Use actual preference values for accurate calculation
     double keySize = _keySize;
     double keyPadding = _keyPadding;
+    double rowGap = _rowGap;
+
+    // Handle physicalLayout - calculate from bounding box (layout's own or global)
+    final effectivePhysicalLayout = currentLayout.physicalLayout ?? _userConfig?.physicalLayout;
+    if (effectivePhysicalLayout != null) {
+      final bounds = _calculatePhysicalLayoutBoundsFromPhysical(effectivePhysicalLayout, keySize, keyPadding);
+      return bounds.height + _baseWindowPadding * 2 + keyPadding * 2;
+    }
 
     // Calculate main keyboard rows height
     int visibleRows =
         _showTopRow ? currentLayout.keys.length : currentLayout.keys.length - 1;
     double mainRowsHeight = visibleRows * (keySize + keyPadding * 2) +
-        (visibleRows - 1) * keyPadding;
+        (visibleRows - 1) * rowGap;
+
+    // Calculate max column offset for overflow space at bottom
+    double maxColumnOffset = _calculateMaxColumnOffset(currentLayout, keySize);
 
     // Calculate thumb cluster height if present
     double thumbClusterHeight = 0;
@@ -871,14 +894,140 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       int maxThumbRows = math.max(currentLayout.thumbCluster!.leftKeys.length,
           currentLayout.thumbCluster!.rightKeys.length);
       thumbClusterHeight = maxThumbRows * (keySize + keyPadding * 2) +
-          (maxThumbRows - 1) * keyPadding +
-          keyPadding * 2; // Extra spacing between main and thumb
+          (maxThumbRows - 1) * rowGap +
+          rowGap; // Gap between main keyboard and thumb cluster
     }
 
+    // Total: main rows + thumb cluster + offset overflow + window padding + content padding
     double totalHeight =
-        mainRowsHeight + thumbClusterHeight + _baseWindowPadding * 2;
+        mainRowsHeight + thumbClusterHeight + maxColumnOffset +
+        _baseWindowPadding * 2 + keyPadding * 2; // keyPadding * 2 for top/bottom content padding
 
     return totalHeight;
+  }
+
+  double _calculateMaxColumnOffset(KeyboardLayout layout, double keySize) {
+    double maxOffset = 0.0;
+
+    final metadata = layout.metadata;
+    if (metadata != null && metadata['columnOffsets'] != null) {
+      final columnOffsets = metadata['columnOffsets'] as Map<String, dynamic>;
+
+      final leftOffsets = columnOffsets['left'] as Map<String, dynamic>?;
+      if (leftOffsets != null) {
+        for (var value in leftOffsets.values) {
+          double offsetPixels = keySize * (value.toDouble() / 100.0);
+          maxOffset = math.max(maxOffset, offsetPixels);
+        }
+      }
+
+      final rightOffsets = columnOffsets['right'] as Map<String, dynamic>?;
+      if (rightOffsets != null) {
+        for (var value in rightOffsets.values) {
+          double offsetPixels = keySize * (value.toDouble() / 100.0);
+          maxOffset = math.max(maxOffset, offsetPixels);
+        }
+      }
+    }
+
+    return maxOffset;
+  }
+
+  /// Calculate bounding box for physicalLayout (takes PhysicalLayout directly)
+  ({double width, double height}) _calculatePhysicalLayoutBoundsFromPhysical(
+      PhysicalLayout physical, double keySize, double keyPadding) {
+    // Determine unit size based on unit type
+    double unitSize;
+    switch (physical.unit) {
+      case PhysicalLayoutUnit.keyUnits:
+        unitSize = keySize + keyPadding;
+        break;
+      case PhysicalLayoutUnit.pixels:
+        unitSize = 1.0;
+        break;
+      case PhysicalLayoutUnit.percent:
+        unitSize = keySize / 100.0;
+        break;
+    }
+
+    double leftMaxX = 0;
+    double leftMaxY = 0;
+    double rightMaxX = 0;
+    double rightMaxY = 0;
+
+    // Calculate left hand bounds (accounting for rotation)
+    for (final key in physical.leftHand.keys) {
+      final keyW = keySize * key.w;
+      final keyH = keySize * key.h;
+      final bounds = _getRotatedKeyBounds(
+          key.x * unitSize, key.y * unitSize, keyW, keyH, key.rotate, keyPadding);
+      leftMaxX = math.max(leftMaxX, bounds.maxX);
+      leftMaxY = math.max(leftMaxY, bounds.maxY);
+    }
+    for (final thumbKey in physical.leftHand.thumbKeys) {
+      final keyW = keySize * thumbKey.w;
+      final keyH = keySize * thumbKey.h;
+      final bounds = _getRotatedKeyBounds(thumbKey.x * unitSize,
+          thumbKey.y * unitSize, keyW, keyH, thumbKey.rotate, keyPadding);
+      leftMaxX = math.max(leftMaxX, bounds.maxX);
+      leftMaxY = math.max(leftMaxY, bounds.maxY);
+    }
+
+    // Calculate right hand bounds (accounting for rotation)
+    for (final key in physical.rightHand.keys) {
+      final keyW = keySize * key.w;
+      final keyH = keySize * key.h;
+      final bounds = _getRotatedKeyBounds(
+          key.x * unitSize, key.y * unitSize, keyW, keyH, key.rotate, keyPadding);
+      rightMaxX = math.max(rightMaxX, bounds.maxX);
+      rightMaxY = math.max(rightMaxY, bounds.maxY);
+    }
+    for (final thumbKey in physical.rightHand.thumbKeys) {
+      final keyW = keySize * thumbKey.w;
+      final keyH = keySize * thumbKey.h;
+      final bounds = _getRotatedKeyBounds(thumbKey.x * unitSize,
+          thumbKey.y * unitSize, keyW, keyH, thumbKey.rotate, keyPadding);
+      rightMaxX = math.max(rightMaxX, bounds.maxX);
+      rightMaxY = math.max(rightMaxY, bounds.maxY);
+    }
+
+    return (
+      width: leftMaxX + _splitWidth + rightMaxX,
+      height: math.max(leftMaxY, rightMaxY),
+    );
+  }
+
+  /// Calculate bounding box of a rotated key
+  ({double maxX, double maxY}) _getRotatedKeyBounds(
+      double x, double y, double w, double h, double rotateDegrees, double padding) {
+    if (rotateDegrees == 0) {
+      return (maxX: x + w + padding * 2, maxY: y + h + padding * 2);
+    }
+
+    // Calculate corners of the rotated rectangle
+    final rad = rotateDegrees * (math.pi / 180);
+    final cos = math.cos(rad);
+    final sin = math.sin(rad);
+
+    // Key center point
+    final cx = x + (w + padding * 2) / 2;
+    final cy = y + (h + padding * 2) / 2;
+
+    // Half dimensions
+    final hw = (w + padding * 2) / 2;
+    final hh = (h + padding * 2) / 2;
+
+    // Calculate all four corners after rotation
+    List<double> xs = [];
+    List<double> ys = [];
+    for (final dx in [-hw, hw]) {
+      for (final dy in [-hh, hh]) {
+        xs.add(cx + dx * cos - dy * sin);
+        ys.add(cy + dx * sin + dy * cos);
+      }
+    }
+
+    return (maxX: xs.reduce(math.max), maxY: ys.reduce(math.max));
   }
 
   // AIDEV-NOTE: Helper method to get maximum keys for a layout side (left=true, right=false)
@@ -923,6 +1072,15 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     KeyboardLayout currentLayout = _getCurrentLayout();
     double keySize = _keySize;
     double keyPadding = _keyPadding;
+
+    // Handle physicalLayout - calculate from bounding box (layout's own or global)
+    final effectivePhysicalLayout = currentLayout.physicalLayout ?? _userConfig?.physicalLayout;
+    if (effectivePhysicalLayout != null) {
+      final bounds = _calculatePhysicalLayoutBoundsFromPhysical(effectivePhysicalLayout, keySize, keyPadding);
+      double debugModeWidth = _debugModeEnabled ? 76.0 : 0.0;
+      double layerSwitchingWidth = 320.0;
+      return bounds.width + _baseWindowPadding * 2 + 20 + debugModeWidth + layerSwitchingWidth;
+    }
 
     // For split matrix layouts, calculate based on left+right hand + gap
     if (currentLayout.leftHand != null && currentLayout.rightHand != null) {
@@ -1018,7 +1176,8 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         (maxRightKeys - 1) * keyPadding;
     double gap = _splitWidth;
 
-    double totalLayoutWidth = leftWidth + gap + rightWidth;
+    // Add content padding (keyPadding on left and right from keyboard_screen)
+    double totalLayoutWidth = leftWidth + gap + rightWidth + keyPadding * 2;
 
     return totalLayoutWidth;
   }
@@ -1391,6 +1550,30 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     _adjustWindowSize();
   }
 
+  void _cycleUserLayout() {
+    if (_allUserLayouts.isEmpty) return;
+
+    // Find current layout index
+    final currentIndex = _allUserLayouts.indexWhere(
+      (l) => l.name == _keyboardLayout.name,
+    );
+
+    // Cycle to next layout
+    final nextIndex = (currentIndex + 1) % _allUserLayouts.length;
+    final nextLayout = _allUserLayouts[nextIndex];
+
+    setState(() {
+      _keyboardLayout = nextLayout;
+    });
+
+    _showOverlay(
+      nextLayout.name,
+      const Icon(LucideIcons.layers, color: Colors.white),
+    );
+
+    _adjustWindowSize();
+  }
+
   void _toggleLayerSwitchingMode() {
     setState(() {
       _layerSwitchingMode = !_layerSwitchingMode;
@@ -1601,6 +1784,15 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         _decreaseOpacityHotKey,
         keyDownHandler: (hotKey) {
           _adjustOpacity(false);
+        },
+      );
+    }
+
+    if (_enableCycleLayoutHotKey) {
+      await hotKeyManager.register(
+        _cycleLayoutHotKey,
+        keyDownHandler: (hotKey) {
+          _cycleUserLayout();
         },
       );
     }
@@ -1875,6 +2067,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
             _cachedMaxRightHandWidth = null;
           });
           _adjustWindowSize();
+        case 'updateRowGap':
+          final rowGap = call.arguments as double;
+          setState(() => _rowGap = rowGap);
+          _adjustWindowSize();
         case 'updateSpaceWidth':
           final spaceWidth = call.arguments as double;
           setState(() {
@@ -2047,6 +2243,16 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
         case 'updateEnableDecreaseOpacityHotKey':
           final enabled = call.arguments as bool;
           setState(() => _enableDecreaseOpacityHotKey = enabled);
+          await _setupHotKeys();
+        case 'updateCycleLayoutHotKey':
+          final hotKeyJson = call.arguments as String;
+          final newHotKey = HotKey.fromJson(jsonDecode(hotKeyJson));
+          await hotKeyManager.unregister(_cycleLayoutHotKey);
+          setState(() => _cycleLayoutHotKey = newHotKey);
+          await _setupHotKeys();
+        case 'updateEnableCycleLayoutHotKey':
+          final enabled = call.arguments as bool;
+          setState(() => _enableCycleLayoutHotKey = enabled);
           await _setupHotKeys();
 
         // Learn settings
@@ -2292,6 +2498,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
                             keyBorderRadius: _keyBorderRadius,
                             keyBorderThickness: _keyBorderThickness,
                             keyPadding: _keyPadding,
+                            rowGap: _rowGap,
                             spaceWidth: _spaceWidth,
                             splitWidth: _splitWidth,
                             lastRowSplitWidth: _lastRowSplitWidth,
